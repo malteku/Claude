@@ -78,7 +78,7 @@ TYPES:
     name1     TYPE name1_gp,
     netwr     TYPE netwr_vf,
     waerk     TYPE waerk,
-    mwsbk     TYPE mwsbk,
+    mwsbk     TYPE vbrk-mwsbk,
     rfbsk     TYPE rfbsk,
     rfbsk_txt TYPE char30,
     erdat     TYPE erdat,
