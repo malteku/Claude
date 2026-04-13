@@ -708,7 +708,7 @@ FORM send_results_by_email.
         lo_recipient    TYPE REF TO if_recipient_bcs,
         lo_sender       TYPE REF TO cl_sapuser_bcs,
         lo_conv         TYPE REF TO cl_abap_conv_out_ce,
-        lx_bcs          TYPE REF TO cx_bcs,
+        lx_root         TYPE REF TO cx_root,
         lv_error        TYPE string.
 
   DATA: lt_body     TYPE bcsy_text,
@@ -730,22 +730,23 @@ FORM send_results_by_email.
   " CSV-Inhalt erzeugen
   PERFORM build_csv_content CHANGING lt_csv.
 
-  " CSV in einen String zusammenfuehren
-  CONCATENATE LINES OF lt_csv
-    INTO lv_csv_str
-    SEPARATED BY cl_abap_char_utilities=>cr_lf.
-
-  " In UTF-8 xstring konvertieren (mit BOM fuer Excel)
-  lo_conv = cl_abap_conv_out_ce=>create( encoding = 'UTF-8' ).
-  lo_conv->convert( EXPORTING data = lv_csv_str IMPORTING buffer = lv_xstr_csv ).
-  lv_xstr = lv_bom.
-  CONCATENATE lv_xstr lv_xstr_csv INTO lv_xstr IN BYTE MODE.
-
-  " xstring in SOLIX-Tabelle konvertieren
-  lt_solix = cl_bcs_convert=>xstring_to_solix( iv_xstring = lv_xstr ).
-  lv_att_size = xstrlen( lv_xstr ).
-
   TRY.
+      " CSV in einen String zusammenfuehren
+      CONCATENATE LINES OF lt_csv
+        INTO lv_csv_str
+        SEPARATED BY cl_abap_char_utilities=>cr_lf.
+
+      " In UTF-8 xstring konvertieren (mit BOM fuer Excel)
+      lo_conv = cl_abap_conv_out_ce=>create( encoding = '4110' ).
+      lo_conv->write( data = lv_csv_str ).
+      lv_xstr_csv = lo_conv->get_buffer( ).
+      lv_xstr = lv_bom.
+      CONCATENATE lv_xstr lv_xstr_csv INTO lv_xstr IN BYTE MODE.
+
+      " xstring in SOLIX-Tabelle konvertieren
+      lt_solix = cl_bcs_convert=>xstring_to_solix( iv_xstring = lv_xstr ).
+      lv_att_size = xstrlen( lv_xstr ).
+
       " Sendauftrag erzeugen
       lo_send_request = cl_bcs=>create_persistent( ).
 
@@ -820,9 +821,9 @@ FORM send_results_by_email.
           space space space DISPLAY LIKE 'E'.
       ENDIF.
 
-    CATCH cx_bcs INTO lx_bcs.
-      lv_error = lx_bcs->get_text( ).
-      MESSAGE s398(00) WITH 'Fehler:' lv_error space space DISPLAY LIKE 'E'.
+    CATCH cx_root INTO lx_root.
+      lv_error = lx_root->get_text( ).
+      MESSAGE s398(00) WITH 'E-Mail-Fehler:' lv_error space space DISPLAY LIKE 'E'.
   ENDTRY.
 
 ENDFORM.
