@@ -34,6 +34,13 @@ SELECTION-SCREEN BEGIN OF BLOCK b04 WITH FRAME TITLE gv_t_b4b.
     p_billi AS CHECKBOX DEFAULT 'X' USER-COMMAND uc3.
 SELECTION-SCREEN END OF BLOCK b04.
 
+SELECTION-SCREEN BEGIN OF BLOCK b05 WITH FRAME TITLE gv_t_b05.
+  PARAMETERS:
+    p_excel AS CHECKBOX.
+  SELECT-OPTIONS:
+    s_email FOR gv_email NO INTERVALS.
+SELECTION-SCREEN END OF BLOCK b05.
+
 *----------------------------------------------------------------------*
 * INITIALIZATION
 *----------------------------------------------------------------------*
@@ -42,6 +49,7 @@ INITIALIZATION.
   gv_t_b02 = 'Partner'.
   gv_t_b03 = 'Datumseingrenzung'.
   gv_t_b04 = 'Anzeigeoptionen'.
+  gv_t_b05 = 'Export / Versand'.
 
   %_s_vkorg_%_app_%-text = 'Verkaufsorg.'.
   %_s_vtweg_%_app_%-text = 'Vertriebsweg'.
@@ -54,6 +62,8 @@ INITIALIZATION.
   %_p_deliv_%_app_%-text = 'Nicht fakt. Lieferungen'.
   %_p_order_%_app_%-text = 'Auftragsb. fakturierbar'.
   %_p_billi_%_app_%-text = 'Offene Fakturen (FI)'.
+  %_p_excel_%_app_%-text = 'Excel-Export (Vordergr.)'.
+  %_s_email_%_app_%-text = 'E-Mail-Empfaenger'.
 
 *----------------------------------------------------------------------*
 * AT SELECTION-SCREEN

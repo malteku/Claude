@@ -12,7 +12,8 @@ TYPE-POOLS: slis.
 CONSTANTS:
   gc_ampel_red    TYPE c LENGTH 1 VALUE '1',
   gc_ampel_yellow TYPE c LENGTH 1 VALUE '2',
-  gc_ampel_green  TYPE c LENGTH 1 VALUE '3'.
+  gc_ampel_green  TYPE c LENGTH 1 VALUE '3',
+  gc_csv_sep      TYPE c LENGTH 1 VALUE ';'.
 
 *----------------------------------------------------------------------*
 * Type Definitions
@@ -90,11 +91,13 @@ DATA:
   gv_bukrs TYPE bukrs,
   gv_lfdat TYPE lfdat,
   gv_audat TYPE audat,
-  gv_fkdat TYPE fkdat.
+  gv_fkdat TYPE fkdat,
+  gv_email TYPE ad_smtpadr.
 
 * Block titles (set in INITIALIZATION)
 DATA:
   gv_t_b01 TYPE char40,
   gv_t_b02 TYPE char40,
   gv_t_b03 TYPE char40,
-  gv_t_b04 TYPE char40.
+  gv_t_b04 TYPE char40,
+  gv_t_b05 TYPE char40.

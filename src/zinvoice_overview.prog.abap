@@ -53,4 +53,17 @@ END-OF-SELECTION.
     RETURN.
   ENDIF.
 
-  PERFORM display_results.
+  " E-Mail-Versand (funktioniert auch im Hintergrundjob)
+  IF s_email[] IS NOT INITIAL.
+    PERFORM send_results_by_email.
+  ENDIF.
+
+  " Excel-Export nur im Vordergrund
+  IF p_excel = abap_true AND sy-batch IS INITIAL.
+    PERFORM export_to_excel.
+  ENDIF.
+
+  " ALV-Anzeige nur im Vordergrund
+  IF sy-batch IS INITIAL.
+    PERFORM display_results.
+  ENDIF.

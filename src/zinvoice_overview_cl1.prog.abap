@@ -540,3 +540,280 @@ FORM user_command USING r_ucomm     LIKE sy-ucomm
   ENDCASE.
 
 ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_CSV_CONTENT
+*&---------------------------------------------------------------------*
+*& Erzeugt den CSV-Inhalt (Semikolon-getrennt) fuer alle drei Bloecke.
+*& Wird von Excel-Export und E-Mail-Versand gemeinsam genutzt.
+*&---------------------------------------------------------------------*
+FORM build_csv_content CHANGING ct_csv TYPE string_table.
+
+  DATA: lv_line TYPE string.
+
+  FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
+                 <fs_ord> TYPE ty_order,
+                 <fs_bil> TYPE ty_billing.
+
+  CLEAR ct_csv.
+
+  "--- Block 1: Nicht fakturierte Lieferungen ---
+  IF gt_delivery IS NOT INITIAL.
+    APPEND 'Nicht fakturierte Lieferungen' TO ct_csv.
+
+    CONCATENATE
+      'Lieferung' 'Position' 'Angelegt am' 'Lieferdatum'
+      'WA-Datum' 'Kunde' 'Kundenname' 'Material'
+      'Bezeichnung' 'Liefermenge' 'ME' 'Auftrag'
+      'Auftr.Pos' 'Fakturastatus'
+      INTO lv_line SEPARATED BY gc_csv_sep.
+    APPEND lv_line TO ct_csv.
+
+    LOOP AT gt_delivery ASSIGNING <fs_del>.
+      CONCATENATE
+        <fs_del>-vbeln <fs_del>-posnr <fs_del>-erdat <fs_del>-lfdat
+        <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
+        <fs_del>-arktx <fs_del>-lfimg <fs_del>-vrkme <fs_del>-vgbel
+        <fs_del>-vgpos <fs_del>-fksta_txt
+        INTO lv_line SEPARATED BY gc_csv_sep.
+      APPEND lv_line TO ct_csv.
+    ENDLOOP.
+
+    APPEND space TO ct_csv.
+  ENDIF.
+
+  "--- Block 2: Auftragsbezogen fakturierbare Auftraege ---
+  IF gt_order IS NOT INITIAL.
+    APPEND 'Auftragsbezogen fakturierbare Auftraege' TO ct_csv.
+
+    CONCATENATE
+      'Auftrag' 'Position' 'Auftragsdatum' 'Auftragsart'
+      'Kunde' 'Kundenname' 'Material' 'Bezeichnung'
+      'Auftragsmenge' 'ME' 'Nettowert' 'Waehrung'
+      'Fakturastatus'
+      INTO lv_line SEPARATED BY gc_csv_sep.
+    APPEND lv_line TO ct_csv.
+
+    LOOP AT gt_order ASSIGNING <fs_ord>.
+      CONCATENATE
+        <fs_ord>-vbeln <fs_ord>-posnr <fs_ord>-audat <fs_ord>-auart
+        <fs_ord>-kunnr <fs_ord>-name1 <fs_ord>-matnr <fs_ord>-arktx
+        <fs_ord>-kwmeng <fs_ord>-vrkme <fs_ord>-netwr <fs_ord>-waerk
+        <fs_ord>-fksta_txt
+        INTO lv_line SEPARATED BY gc_csv_sep.
+      APPEND lv_line TO ct_csv.
+    ENDLOOP.
+
+    APPEND space TO ct_csv.
+  ENDIF.
+
+  "--- Block 3: Fakturen nicht in Buchhaltung ---
+  IF gt_billing IS NOT INITIAL.
+    APPEND 'Fakturen - nicht in Buchhaltung gebucht' TO ct_csv.
+
+    CONCATENATE
+      'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
+      'Auftraggeber' 'Kundenname' 'Nettowert' 'Steuerbetrag'
+      'Waehrung' 'Buchungsstatus' 'Angelegt am' 'Angelegt von'
+      INTO lv_line SEPARATED BY gc_csv_sep.
+    APPEND lv_line TO ct_csv.
+
+    LOOP AT gt_billing ASSIGNING <fs_bil>.
+      CONCATENATE
+        <fs_bil>-vbeln <fs_bil>-fkdat <fs_bil>-fkart <fs_bil>-bukrs
+        <fs_bil>-kunag <fs_bil>-name1 <fs_bil>-netwr <fs_bil>-mwsbk
+        <fs_bil>-waerk <fs_bil>-rfbsk_txt <fs_bil>-erdat <fs_bil>-ernam
+        INTO lv_line SEPARATED BY gc_csv_sep.
+      APPEND lv_line TO ct_csv.
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form EXPORT_TO_EXCEL
+*&---------------------------------------------------------------------*
+*& Exportiert die Ergebnisse als CSV-Datei auf den lokalen Rechner.
+*& Nur im Vordergrund (Dialog) moeglich.
+*&---------------------------------------------------------------------*
+FORM export_to_excel.
+
+  DATA: lt_csv    TYPE string_table,
+        lv_fname  TYPE string,
+        lv_path   TYPE string,
+        lv_fpath  TYPE string,
+        lv_action TYPE i.
+
+  PERFORM build_csv_content CHANGING lt_csv.
+
+  " Datei-Speichern-Dialog anzeigen
+  cl_gui_frontend_services=>file_save_dialog(
+    EXPORTING
+      default_extension = 'csv'
+      default_file_name = 'Faktura_Uebersicht.csv'
+      file_filter       = 'CSV (*.csv)|*.csv|Alle Dateien (*.*)|*.*'
+    CHANGING
+      filename    = lv_fname
+      path        = lv_path
+      fullpath    = lv_fpath
+      user_action = lv_action
+    EXCEPTIONS
+      OTHERS      = 1 ).
+
+  IF sy-subrc <> 0 OR lv_action <> cl_gui_frontend_services=>action_ok.
+    RETURN.
+  ENDIF.
+
+  " CSV herunterladen (UTF-8 Codepage 4110)
+  cl_gui_frontend_services=>gui_download(
+    EXPORTING
+      filename  = lv_fpath
+      filetype  = 'ASC'
+      codepage  = '4110'
+    CHANGING
+      data_tab  = lt_csv
+    EXCEPTIONS
+      OTHERS    = 1 ).
+
+  IF sy-subrc = 0.
+    MESSAGE s398(00) WITH 'Excel-Export erfolgreich gespeichert.' space space space.
+  ELSE.
+    MESSAGE s398(00) WITH 'Fehler beim Excel-Export.' space space space DISPLAY LIKE 'E'.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form SEND_RESULTS_BY_EMAIL
+*&---------------------------------------------------------------------*
+*& Versendet die Ergebnisse als CSV-Anhang per E-Mail via CL_BCS.
+*& Funktioniert im Dialog und im Hintergrundjob.
+*&---------------------------------------------------------------------*
+FORM send_results_by_email.
+
+  DATA: lo_send_request TYPE REF TO cl_bcs,
+        lo_document     TYPE REF TO cl_document_bcs,
+        lo_recipient    TYPE REF TO if_recipient_bcs,
+        lo_sender       TYPE REF TO cl_sapuser_bcs,
+        lo_conv         TYPE REF TO cl_abap_conv_out_ce,
+        lx_bcs          TYPE REF TO cx_bcs,
+        lv_error        TYPE string.
+
+  DATA: lt_body     TYPE bcsy_text,
+        ls_body     TYPE soli,
+        lt_csv      TYPE string_table,
+        lv_csv_str  TYPE string,
+        lv_xstr     TYPE xstring,
+        lv_xstr_csv TYPE xstring,
+        lt_solix    TYPE solix_tab,
+        lv_subject  TYPE so_obj_des,
+        lv_att_subj TYPE sood-objdes,
+        lv_att_size TYPE so_obj_len,
+        lv_sent     TYPE os_boolean,
+        lv_count    TYPE i,
+        lv_text     TYPE char50.
+
+  DATA: lv_bom TYPE x LENGTH 3 VALUE 'EFBBBF'.
+
+  " CSV-Inhalt erzeugen
+  PERFORM build_csv_content CHANGING lt_csv.
+
+  " CSV in einen String zusammenfuehren
+  CONCATENATE LINES OF lt_csv
+    INTO lv_csv_str
+    SEPARATED BY cl_abap_char_utilities=>cr_lf.
+
+  " In UTF-8 xstring konvertieren (mit BOM fuer Excel)
+  lo_conv = cl_abap_conv_out_ce=>create( encoding = 'UTF-8' ).
+  lo_conv->convert( EXPORTING data = lv_csv_str IMPORTING buffer = lv_xstr_csv ).
+  lv_xstr = lv_bom.
+  CONCATENATE lv_xstr lv_xstr_csv INTO lv_xstr IN BYTE MODE.
+
+  " xstring in SOLIX-Tabelle konvertieren
+  lt_solix = cl_bcs_convert=>xstring_to_solix( iv_xstring = lv_xstr ).
+  lv_att_size = xstrlen( lv_xstr ).
+
+  TRY.
+      " Sendauftrag erzeugen
+      lo_send_request = cl_bcs=>create_persistent( ).
+
+      " E-Mail-Body aufbauen
+      ls_body-line = 'Faktura-Uebersichtsreport'.
+      APPEND ls_body TO lt_body.
+      CLEAR ls_body.
+      APPEND ls_body TO lt_body.
+
+      DESCRIBE TABLE gt_delivery LINES lv_count.
+      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
+      CONCATENATE 'Nicht fakturierte Lieferungen:' lv_text
+        INTO ls_body-line SEPARATED BY space.
+      APPEND ls_body TO lt_body.
+
+      DESCRIBE TABLE gt_order LINES lv_count.
+      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
+      CONCATENATE 'Auftragsbez. fakturierbar:' lv_text
+        INTO ls_body-line SEPARATED BY space.
+      APPEND ls_body TO lt_body.
+
+      DESCRIBE TABLE gt_billing LINES lv_count.
+      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
+      CONCATENATE 'Offene Fakturen (FI):' lv_text
+        INTO ls_body-line SEPARATED BY space.
+      APPEND ls_body TO lt_body.
+
+      CLEAR ls_body.
+      APPEND ls_body TO lt_body.
+      ls_body-line = 'Details siehe Anlage.'.
+      APPEND ls_body TO lt_body.
+
+      " Dokument erzeugen
+      lv_subject = 'Faktura-Uebersichtsreport'.
+      lo_document = cl_document_bcs=>create_document(
+        i_type    = 'RAW'
+        i_text    = lt_body
+        i_subject = lv_subject ).
+
+      " CSV-Anhang hinzufuegen
+      lv_att_subj = 'Faktura_Uebersicht.csv'.
+      lo_document->add_attachment(
+        i_attachment_type    = 'CSV'
+        i_attachment_subject = lv_att_subj
+        i_attachment_size    = lv_att_size
+        i_att_content_hex    = lt_solix ).
+
+      lo_send_request->set_document( lo_document ).
+
+      " Absender setzen
+      lo_sender = cl_sapuser_bcs=>create( sy-uname ).
+      lo_send_request->set_sender( lo_sender ).
+
+      " Empfaenger aus Selektion hinzufuegen
+      LOOP AT s_email.
+        lo_recipient = cl_cam_address_bcs=>create_internet_address(
+          i_address_string = s_email-low ).
+        lo_send_request->add_recipient(
+          i_recipient = lo_recipient
+          i_express   = 'X' ).
+      ENDLOOP.
+
+      " Sofort senden
+      lo_send_request->set_send_immediately( 'X' ).
+      lv_sent = lo_send_request->send( i_with_error_screen = 'X' ).
+
+      IF lv_sent = abap_true.
+        COMMIT WORK.
+        MESSAGE s398(00) WITH 'E-Mail erfolgreich versendet.' space space space.
+      ELSE.
+        MESSAGE s398(00) WITH 'E-Mail konnte nicht versendet werden.'
+          space space space DISPLAY LIKE 'E'.
+      ENDIF.
+
+    CATCH cx_bcs INTO lx_bcs.
+      lv_error = lx_bcs->get_text( ).
+      MESSAGE s398(00) WITH 'Fehler:' lv_error space space DISPLAY LIKE 'E'.
+  ENDTRY.
+
+ENDFORM.
