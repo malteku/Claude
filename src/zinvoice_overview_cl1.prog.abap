@@ -550,7 +550,11 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM build_csv_content CHANGING ct_csv TYPE string_table.
 
-  DATA: lv_line TYPE string.
+  DATA: lv_line  TYPE string,
+        lv_lfimg TYPE char20,
+        lv_kwmng TYPE char20,
+        lv_netwr TYPE char20,
+        lv_mwsbk TYPE char20.
 
   FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
                  <fs_ord> TYPE ty_order,
@@ -571,10 +575,11 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
     APPEND lv_line TO ct_csv.
 
     LOOP AT gt_delivery ASSIGNING <fs_del>.
+      WRITE <fs_del>-lfimg TO lv_lfimg LEFT-JUSTIFIED.
       CONCATENATE
         <fs_del>-vbeln <fs_del>-posnr <fs_del>-erdat <fs_del>-lfdat
         <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
-        <fs_del>-arktx <fs_del>-lfimg <fs_del>-vrkme <fs_del>-vgbel
+        <fs_del>-arktx lv_lfimg <fs_del>-vrkme <fs_del>-vgbel
         <fs_del>-vgpos <fs_del>-fksta_txt
         INTO lv_line SEPARATED BY gc_csv_sep.
       APPEND lv_line TO ct_csv.
@@ -596,10 +601,12 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
     APPEND lv_line TO ct_csv.
 
     LOOP AT gt_order ASSIGNING <fs_ord>.
+      WRITE <fs_ord>-kwmeng TO lv_kwmng LEFT-JUSTIFIED.
+      WRITE <fs_ord>-netwr  TO lv_netwr LEFT-JUSTIFIED.
       CONCATENATE
         <fs_ord>-vbeln <fs_ord>-posnr <fs_ord>-audat <fs_ord>-auart
         <fs_ord>-kunnr <fs_ord>-name1 <fs_ord>-matnr <fs_ord>-arktx
-        <fs_ord>-kwmeng <fs_ord>-vrkme <fs_ord>-netwr <fs_ord>-waerk
+        lv_kwmng <fs_ord>-vrkme lv_netwr <fs_ord>-waerk
         <fs_ord>-fksta_txt
         INTO lv_line SEPARATED BY gc_csv_sep.
       APPEND lv_line TO ct_csv.
@@ -620,9 +627,11 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
     APPEND lv_line TO ct_csv.
 
     LOOP AT gt_billing ASSIGNING <fs_bil>.
+      WRITE <fs_bil>-netwr TO lv_netwr LEFT-JUSTIFIED.
+      WRITE <fs_bil>-mwsbk TO lv_mwsbk LEFT-JUSTIFIED.
       CONCATENATE
         <fs_bil>-vbeln <fs_bil>-fkdat <fs_bil>-fkart <fs_bil>-bukrs
-        <fs_bil>-kunag <fs_bil>-name1 <fs_bil>-netwr <fs_bil>-mwsbk
+        <fs_bil>-kunag <fs_bil>-name1 lv_netwr lv_mwsbk
         <fs_bil>-waerk <fs_bil>-rfbsk_txt <fs_bil>-erdat <fs_bil>-ernam
         INTO lv_line SEPARATED BY gc_csv_sep.
       APPEND lv_line TO ct_csv.
