@@ -3,7 +3,7 @@
 *&---------------------------------------------------------------------*
 *& Faktura-Uebersichtsreport
 *&
-*& Dieser Report zeigt drei Bereiche:
+*& Dieser Report zeigt vier Bereiche:
 *& 1. Lieferungen, die noch nicht fakturiert wurden
 *& 2. Auftraege, die auftragsbezogen fakturiert werden koennen
 *& 3. Fakturen, die noch nicht in der Buchhaltung gebucht sind

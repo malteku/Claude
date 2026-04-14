@@ -34,29 +34,31 @@ CLASS lcl_alv_handler IMPLEMENTATION.
 
     DATA: lv_vbeln TYPE vbeln.
 
+    FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
+                   <fs_ord> TYPE ty_order,
+                   <fs_bil> TYPE ty_billing,
+                   <fs_nst> TYPE ty_nast_check.
+
     CASE gv_mode.
 
       WHEN 'D'.  " Delivery
         CASE column.
           WHEN 'VBELN'.
-            FIELD-SYMBOLS: <fs_del> TYPE ty_delivery.
             READ TABLE gt_delivery ASSIGNING <fs_del> INDEX row.
             CHECK sy-subrc = 0.
             lv_vbeln = <fs_del>-vbeln.
             SET PARAMETER ID 'VL' FIELD lv_vbeln.
             CALL TRANSACTION 'VL03N' AND SKIP FIRST SCREEN.
           WHEN 'VGBEL'.
-            FIELD-SYMBOLS: <fs_del2> TYPE ty_delivery.
-            READ TABLE gt_delivery ASSIGNING <fs_del2> INDEX row.
+            READ TABLE gt_delivery ASSIGNING <fs_del> INDEX row.
             CHECK sy-subrc = 0.
-            lv_vbeln = <fs_del2>-vgbel.
+            lv_vbeln = <fs_del>-vgbel.
             SET PARAMETER ID 'AUN' FIELD lv_vbeln.
             CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
         ENDCASE.
 
       WHEN 'O'.  " Order
         IF column = 'VBELN'.
-          FIELD-SYMBOLS: <fs_ord> TYPE ty_order.
           READ TABLE gt_order ASSIGNING <fs_ord> INDEX row.
           CHECK sy-subrc = 0.
           lv_vbeln = <fs_ord>-vbeln.
@@ -66,7 +68,6 @@ CLASS lcl_alv_handler IMPLEMENTATION.
 
       WHEN 'B'.  " Billing
         IF column = 'VBELN'.
-          FIELD-SYMBOLS: <fs_bil> TYPE ty_billing.
           READ TABLE gt_billing ASSIGNING <fs_bil> INDEX row.
           CHECK sy-subrc = 0.
           lv_vbeln = <fs_bil>-vbeln.
@@ -76,7 +77,6 @@ CLASS lcl_alv_handler IMPLEMENTATION.
 
       WHEN 'N'.  " NAST check
         IF column = 'VBELN'.
-          FIELD-SYMBOLS: <fs_nst> TYPE ty_nast_check.
           READ TABLE gt_nast_check ASSIGNING <fs_nst> INDEX row.
           CHECK sy-subrc = 0.
           lv_vbeln = <fs_nst>-vbeln.

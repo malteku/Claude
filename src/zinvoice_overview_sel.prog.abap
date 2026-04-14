@@ -7,7 +7,7 @@
 *----------------------------------------------------------------------*
 * Selection Screen
 *----------------------------------------------------------------------*
-SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE gv_t_b1b.
+SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE gv_t_b01.
   SELECT-OPTIONS:
     s_vkorg FOR gv_vkorg OBLIGATORY,
     s_vtweg FOR gv_vtweg,
@@ -15,19 +15,19 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE gv_t_b1b.
     s_bukrs FOR gv_bukrs.
 SELECTION-SCREEN END OF BLOCK b01.
 
-SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE gv_t_b2b.
+SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE gv_t_b02.
   SELECT-OPTIONS:
     s_kunnr FOR gv_kunnr.
 SELECTION-SCREEN END OF BLOCK b02.
 
-SELECTION-SCREEN BEGIN OF BLOCK b03 WITH FRAME TITLE gv_t_b3b.
+SELECTION-SCREEN BEGIN OF BLOCK b03 WITH FRAME TITLE gv_t_b03.
   SELECT-OPTIONS:
     s_lfdat FOR gv_lfdat,
     s_audat FOR gv_audat,
     s_fkdat FOR gv_fkdat.
 SELECTION-SCREEN END OF BLOCK b03.
 
-SELECTION-SCREEN BEGIN OF BLOCK b04 WITH FRAME TITLE gv_t_b4b.
+SELECTION-SCREEN BEGIN OF BLOCK b04 WITH FRAME TITLE gv_t_b04.
   PARAMETERS:
     p_deliv RADIOBUTTON GROUP rb1 DEFAULT 'X',
     p_order RADIOBUTTON GROUP rb1,
