@@ -4,8 +4,6 @@
 *& Globale Definitionen: Typen, Konstanten, globale Daten
 *&---------------------------------------------------------------------*
 
-TYPE-POOLS: slis.
-
 *----------------------------------------------------------------------*
 * Constants
 *----------------------------------------------------------------------*
@@ -72,7 +70,22 @@ TYPES:
     erdat     TYPE erdat,
     ernam     TYPE ernam,
     bukrs     TYPE bukrs,
-  END OF ty_billing.
+  END OF ty_billing,
+
+  BEGIN OF ty_nast_check,
+    ampel     TYPE c LENGTH 1,
+    vbeln     TYPE vbeln,
+    fkdat     TYPE fkdat,
+    fkart     TYPE fkart,
+    bukrs     TYPE bukrs,
+    kunag     TYPE kunag,
+    name1     TYPE name1_gp,
+    netwr     TYPE netwr,
+    waerk     TYPE waerk,
+    kschl     TYPE kschl,
+    vstat     TYPE c LENGTH 1,
+    vstat_txt TYPE char30,
+  END OF ty_nast_check.
 
 *----------------------------------------------------------------------*
 * Global Data
@@ -80,7 +93,8 @@ TYPES:
 DATA:
   gt_delivery TYPE STANDARD TABLE OF ty_delivery,
   gt_order    TYPE STANDARD TABLE OF ty_order,
-  gt_billing  TYPE STANDARD TABLE OF ty_billing.
+  gt_billing    TYPE STANDARD TABLE OF ty_billing,
+  gt_nast_check TYPE STANDARD TABLE OF ty_nast_check.
 
 * Reference fields for select-options
 DATA:

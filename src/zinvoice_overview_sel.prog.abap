@@ -29,9 +29,10 @@ SELECTION-SCREEN END OF BLOCK b03.
 
 SELECTION-SCREEN BEGIN OF BLOCK b04 WITH FRAME TITLE gv_t_b4b.
   PARAMETERS:
-    p_deliv AS CHECKBOX DEFAULT 'X' USER-COMMAND uc1,
-    p_order AS CHECKBOX DEFAULT 'X' USER-COMMAND uc2,
-    p_billi AS CHECKBOX DEFAULT 'X' USER-COMMAND uc3.
+    p_deliv RADIOBUTTON GROUP rb1 DEFAULT 'X',
+    p_order RADIOBUTTON GROUP rb1,
+    p_billi RADIOBUTTON GROUP rb1,
+    p_nast  RADIOBUTTON GROUP rb1.
 SELECTION-SCREEN END OF BLOCK b04.
 
 SELECTION-SCREEN BEGIN OF BLOCK b05 WITH FRAME TITLE gv_t_b05.
@@ -62,6 +63,7 @@ INITIALIZATION.
   %_p_deliv_%_app_%-text = 'Nicht fakt. Lieferungen'.
   %_p_order_%_app_%-text = 'Auftragsb. fakturierbar'.
   %_p_billi_%_app_%-text = 'Offene Fakturen (FI)'.
+  %_p_nast_%_app_%-text  = 'Rechnungen ohne Nachricht'.
   %_p_excel_%_app_%-text = 'Excel-Export (Vordergr.)'.
   %_s_email_%_app_%-text = 'E-Mail-Empfaenger'.
 
