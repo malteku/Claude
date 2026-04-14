@@ -1,8 +1,94 @@
 *&---------------------------------------------------------------------*
 *& Include /MBSO/ZINVOICE_OVERVIEW_CL1
 *&---------------------------------------------------------------------*
-*& Verarbeitungslogik: Selektion, Anreicherung und ALV-Anzeige
+*& Verarbeitungslogik: Selektion, Anreicherung, ALV-Anzeige (CL_SALV),
+*& CSV-Export und E-Mail-Versand
 *&---------------------------------------------------------------------*
+
+
+*----------------------------------------------------------------------*
+* Local ALV Event Handler Class
+*----------------------------------------------------------------------*
+CLASS lcl_alv_handler DEFINITION.
+
+  PUBLIC SECTION.
+    METHODS:
+      constructor
+        IMPORTING iv_mode TYPE c,
+      on_link_click
+        FOR EVENT link_click OF cl_salv_events_table
+        IMPORTING row column.
+
+  PRIVATE SECTION.
+    DATA: gv_mode TYPE c LENGTH 1.
+
+ENDCLASS.
+
+CLASS lcl_alv_handler IMPLEMENTATION.
+
+  METHOD constructor.
+    gv_mode = iv_mode.
+  ENDMETHOD.
+
+  METHOD on_link_click.
+
+    DATA: lv_vbeln TYPE vbeln.
+
+    CASE gv_mode.
+
+      WHEN 'D'.  " Delivery
+        CASE column.
+          WHEN 'VBELN'.
+            FIELD-SYMBOLS: <fs_del> TYPE ty_delivery.
+            READ TABLE gt_delivery ASSIGNING <fs_del> INDEX row.
+            CHECK sy-subrc = 0.
+            lv_vbeln = <fs_del>-vbeln.
+            SET PARAMETER ID 'VL' FIELD lv_vbeln.
+            CALL TRANSACTION 'VL03N' AND SKIP FIRST SCREEN.
+          WHEN 'VGBEL'.
+            FIELD-SYMBOLS: <fs_del2> TYPE ty_delivery.
+            READ TABLE gt_delivery ASSIGNING <fs_del2> INDEX row.
+            CHECK sy-subrc = 0.
+            lv_vbeln = <fs_del2>-vgbel.
+            SET PARAMETER ID 'AUN' FIELD lv_vbeln.
+            CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
+        ENDCASE.
+
+      WHEN 'O'.  " Order
+        IF column = 'VBELN'.
+          FIELD-SYMBOLS: <fs_ord> TYPE ty_order.
+          READ TABLE gt_order ASSIGNING <fs_ord> INDEX row.
+          CHECK sy-subrc = 0.
+          lv_vbeln = <fs_ord>-vbeln.
+          SET PARAMETER ID 'AUN' FIELD lv_vbeln.
+          CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
+        ENDIF.
+
+      WHEN 'B'.  " Billing
+        IF column = 'VBELN'.
+          FIELD-SYMBOLS: <fs_bil> TYPE ty_billing.
+          READ TABLE gt_billing ASSIGNING <fs_bil> INDEX row.
+          CHECK sy-subrc = 0.
+          lv_vbeln = <fs_bil>-vbeln.
+          SET PARAMETER ID 'VF' FIELD lv_vbeln.
+          CALL TRANSACTION 'VF03' AND SKIP FIRST SCREEN.
+        ENDIF.
+
+      WHEN 'N'.  " NAST check
+        IF column = 'VBELN'.
+          FIELD-SYMBOLS: <fs_nst> TYPE ty_nast_check.
+          READ TABLE gt_nast_check ASSIGNING <fs_nst> INDEX row.
+          CHECK sy-subrc = 0.
+          lv_vbeln = <fs_nst>-vbeln.
+          SET PARAMETER ID 'VF' FIELD lv_vbeln.
+          CALL TRANSACTION 'VF03' AND SKIP FIRST SCREEN.
+        ENDIF.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+ENDCLASS.
 
 
 *&---------------------------------------------------------------------*
@@ -148,9 +234,111 @@ ENDFORM.
 
 
 *&---------------------------------------------------------------------*
+*& Form SELECT_NAST_CHECK
+*&---------------------------------------------------------------------*
+*& Selektiert Fakturen ohne Nachricht oder mit unverarbeiteter/
+*& fehlerhafter Nachricht (NAST).
+*& KAPPL = 'V3' (Faktura), VSTAT: 0=nicht verarbeitet, 1=OK, 2=Fehler
+*&---------------------------------------------------------------------*
+FORM select_nast_check.
+
+  TYPES: BEGIN OF ty_nast_raw,
+           objky TYPE nast-objky,
+           kschl TYPE kschl,
+           vstat TYPE c LENGTH 1,
+         END OF ty_nast_raw.
+
+  DATA: lt_vbrk     TYPE STANDARD TABLE OF ty_nast_check,
+        lt_nast     TYPE STANDARD TABLE OF ty_nast_raw,
+        ls_nast     TYPE ty_nast_raw,
+        lv_has_good TYPE abap_bool.
+
+  FIELD-SYMBOLS: <fs_vbrk> TYPE ty_nast_check,
+                 <fs_nast> TYPE ty_nast_raw.
+
+  " Selektiere alle relevanten Fakturen
+  SELECT vbeln fkdat fkart bukrs kunag netwr waerk
+    INTO CORRESPONDING FIELDS OF TABLE lt_vbrk
+    FROM vbrk
+    WHERE vkorg IN s_vkorg
+      AND vtweg IN s_vtweg
+      AND spart IN s_spart
+      AND fkdat IN s_fkdat
+      AND kunag IN s_kunnr
+      AND bukrs IN s_bukrs
+      AND fksto <> 'X'.
+
+  CHECK lt_vbrk IS NOT INITIAL.
+
+  " NAST-Eintraege fuer diese Fakturen lesen
+  SELECT objky kschl vstat
+    INTO CORRESPONDING FIELDS OF TABLE lt_nast
+    FROM nast
+    FOR ALL ENTRIES IN lt_vbrk
+    WHERE objky = lt_vbrk-vbeln
+      AND kappl = 'V3'.
+
+  SORT lt_nast BY objky.
+
+  " Fakturen filtern: nur solche ohne Nachricht oder mit Problem
+  LOOP AT lt_vbrk ASSIGNING <fs_vbrk>.
+
+    " Pruefe ob NAST-Eintraege fuer diese Faktura existieren
+    READ TABLE lt_nast TRANSPORTING NO FIELDS
+      WITH KEY objky = <fs_vbrk>-vbeln
+      BINARY SEARCH.
+
+    IF sy-subrc <> 0.
+      " Keine Nachricht vorhanden -> Rot
+      <fs_vbrk>-ampel     = gc_ampel_red.
+      <fs_vbrk>-vstat     = '0'.
+      <fs_vbrk>-vstat_txt = 'Keine Nachricht'.
+      APPEND <fs_vbrk> TO gt_nast_check.
+      CONTINUE.
+    ENDIF.
+
+    " Pruefe alle NAST-Eintraege dieser Faktura
+    lv_has_good = abap_false.
+    CLEAR ls_nast.
+
+    LOOP AT lt_nast ASSIGNING <fs_nast>
+      WHERE objky = <fs_vbrk>-vbeln.
+      IF <fs_nast>-vstat = '1'.
+        lv_has_good = abap_true.
+        EXIT.
+      ENDIF.
+      ls_nast = <fs_nast>.
+    ENDLOOP.
+
+    IF lv_has_good = abap_false.
+      " Keine erfolgreich verarbeitete Nachricht gefunden
+      <fs_vbrk>-kschl = ls_nast-kschl.
+      <fs_vbrk>-vstat = ls_nast-vstat.
+      CASE ls_nast-vstat.
+        WHEN '0'.
+          <fs_vbrk>-ampel     = gc_ampel_yellow.
+          <fs_vbrk>-vstat_txt = 'Nicht verarbeitet'.
+        WHEN '2'.
+          <fs_vbrk>-ampel     = gc_ampel_red.
+          <fs_vbrk>-vstat_txt = 'Fehlerhaft'.
+        WHEN OTHERS.
+          <fs_vbrk>-ampel     = gc_ampel_yellow.
+          <fs_vbrk>-vstat_txt = 'Unbekannter Status'.
+      ENDCASE.
+      APPEND <fs_vbrk> TO gt_nast_check.
+    ENDIF.
+
+  ENDLOOP.
+
+  SORT gt_nast_check BY bukrs vbeln.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
 *& Form ENRICH_CUSTOMER_NAMES
 *&---------------------------------------------------------------------*
-*& Liest Kundennamen aus KNA1 fuer alle drei Ergebnistabellen.
+*& Liest Kundennamen aus KNA1 fuer alle Ergebnistabellen.
 *&---------------------------------------------------------------------*
 FORM enrich_customer_names.
 
@@ -165,7 +353,8 @@ FORM enrich_customer_names.
 
   FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
                  <fs_ord> TYPE ty_order,
-                 <fs_bil> TYPE ty_billing.
+                 <fs_bil> TYPE ty_billing,
+                 <fs_nst> TYPE ty_nast_check.
 
   " Collect all unique customer numbers
   LOOP AT gt_delivery ASSIGNING <fs_del>.
@@ -178,6 +367,10 @@ FORM enrich_customer_names.
 
   LOOP AT gt_billing ASSIGNING <fs_bil>.
     APPEND <fs_bil>-kunag TO lt_kunnr.
+  ENDLOOP.
+
+  LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+    APPEND <fs_nst>-kunag TO lt_kunnr.
   ENDLOOP.
 
   SORT lt_kunnr.
@@ -219,325 +412,378 @@ FORM enrich_customer_names.
     ENDIF.
   ENDLOOP.
 
+  " Fill names into nast check table
+  LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+    READ TABLE lt_kna1 INTO ls_kna1
+      WITH KEY kunnr = <fs_nst>-kunag.
+    IF sy-subrc = 0.
+      <fs_nst>-name1 = ls_kna1-name1.
+    ENDIF.
+  ENDLOOP.
+
 ENDFORM.
 
 
 *&---------------------------------------------------------------------*
 *& Form DISPLAY_RESULTS
 *&---------------------------------------------------------------------*
-*& Zeigt die drei Ergebnisbloecke als ALV Block List an.
+*& Zeigt die Ergebnisse als ALV mit CL_SALV_TABLE an.
+*& Je nach Radiobutton wird nur eine Tabelle angezeigt.
 *&---------------------------------------------------------------------*
 FORM display_results.
 
-  DATA: ls_layout TYPE slis_layout_alv,
-        lt_fcat   TYPE slis_t_fieldcat_alv,
-        lt_events TYPE slis_t_event,
-        ls_event  TYPE slis_alv_event.
+  DATA: lo_salv    TYPE REF TO cl_salv_table,
+        lo_events  TYPE REF TO cl_salv_events_table,
+        lo_handler TYPE REF TO lcl_alv_handler,
+        lo_display TYPE REF TO cl_salv_display_settings,
+        lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_funcs   TYPE REF TO cl_salv_functions_list,
+        lx_msg     TYPE REF TO cx_salv_msg,
+        lv_title   TYPE lvc_title,
+        lv_mode    TYPE c LENGTH 1.
+
+  TRY.
+      CASE abap_true.
+
+        WHEN p_deliv.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = lo_salv
+            CHANGING  t_table      = gt_delivery ).
+          lv_title = 'Nicht fakturierte Lieferungen'.
+          lv_mode  = 'D'.
+          PERFORM set_columns_delivery USING lo_salv.
+
+        WHEN p_order.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = lo_salv
+            CHANGING  t_table      = gt_order ).
+          lv_title = 'Auftragsbezogen fakturierbare Auftraege'.
+          lv_mode  = 'O'.
+          PERFORM set_columns_order USING lo_salv.
+
+        WHEN p_billi.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = lo_salv
+            CHANGING  t_table      = gt_billing ).
+          lv_title = 'Fakturen - nicht in Buchhaltung gebucht'.
+          lv_mode  = 'B'.
+          PERFORM set_columns_billing USING lo_salv.
+
+        WHEN p_nast.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = lo_salv
+            CHANGING  t_table      = gt_nast_check ).
+          lv_title = 'Rechnungen ohne / mit fehlerhafter Nachricht'.
+          lv_mode  = 'N'.
+          PERFORM set_columns_nast USING lo_salv.
 
-  " Initialize ALV block list
-  CALL FUNCTION 'REUSE_ALV_BLOCK_LIST_INIT'
-    EXPORTING
-      i_callback_program      = sy-repid
-      i_callback_user_command = 'USER_COMMAND'.
-
-  "--------------------------------------------------------------
-  " Block 1: Nicht fakturierte Lieferungen
-  "--------------------------------------------------------------
-  IF gt_delivery IS NOT INITIAL.
-    CLEAR: lt_fcat, lt_events, ls_layout.
-
-    PERFORM build_fcat_delivery CHANGING lt_fcat.
-
-    ls_layout-colwidth_optimize = 'X'.
-    ls_layout-lights_fieldname  = 'AMPEL'.
-
-    CLEAR ls_event.
-    ls_event-name = 'TOP_OF_PAGE'.
-    ls_event-form = 'TOP_DELIVERY'.
-    APPEND ls_event TO lt_events.
-
-    CALL FUNCTION 'REUSE_ALV_BLOCK_LIST_APPEND'
-      EXPORTING
-        is_layout   = ls_layout
-        it_fieldcat = lt_fcat
-        i_tabname   = 'GT_DELIVERY'
-        it_events   = lt_events
-      TABLES
-        t_outtab    = gt_delivery.
-  ENDIF.
-
-  "--------------------------------------------------------------
-  " Block 2: Auftragsbezogen fakturierbare Auftraege
-  "--------------------------------------------------------------
-  IF gt_order IS NOT INITIAL.
-    CLEAR: lt_fcat, lt_events, ls_layout.
-
-    PERFORM build_fcat_order CHANGING lt_fcat.
-
-    ls_layout-colwidth_optimize = 'X'.
-    ls_layout-lights_fieldname  = 'AMPEL'.
-
-    CLEAR ls_event.
-    ls_event-name = 'TOP_OF_PAGE'.
-    ls_event-form = 'TOP_ORDER'.
-    APPEND ls_event TO lt_events.
-
-    CALL FUNCTION 'REUSE_ALV_BLOCK_LIST_APPEND'
-      EXPORTING
-        is_layout   = ls_layout
-        it_fieldcat = lt_fcat
-        i_tabname   = 'GT_ORDER'
-        it_events   = lt_events
-      TABLES
-        t_outtab    = gt_order.
-  ENDIF.
-
-  "--------------------------------------------------------------
-  " Block 3: Fakturen nicht in Buchhaltung gebucht
-  "--------------------------------------------------------------
-  IF gt_billing IS NOT INITIAL.
-    CLEAR: lt_fcat, lt_events, ls_layout.
-
-    PERFORM build_fcat_billing CHANGING lt_fcat.
-
-    ls_layout-colwidth_optimize = 'X'.
-    ls_layout-lights_fieldname  = 'AMPEL'.
-
-    CLEAR ls_event.
-    ls_event-name = 'TOP_OF_PAGE'.
-    ls_event-form = 'TOP_BILLING'.
-    APPEND ls_event TO lt_events.
-
-    CALL FUNCTION 'REUSE_ALV_BLOCK_LIST_APPEND'
-      EXPORTING
-        is_layout   = ls_layout
-        it_fieldcat = lt_fcat
-        i_tabname   = 'GT_BILLING'
-        it_events   = lt_events
-      TABLES
-        t_outtab    = gt_billing.
-  ENDIF.
-
-  " Display all blocks
-  CALL FUNCTION 'REUSE_ALV_BLOCK_LIST_DISPLAY'.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form BUILD_FCAT_DELIVERY
-*&---------------------------------------------------------------------*
-FORM build_fcat_delivery CHANGING ct_fcat TYPE slis_t_fieldcat_alv.
-
-  DATA: ls TYPE slis_fieldcat_alv.
-
-  CLEAR ct_fcat.
-
-  CLEAR ls. ls-fieldname = 'VBELN'.     ls-seltext_l = 'Lieferung'.       ls-outputlen = 10. ls-hotspot = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'POSNR'.     ls-seltext_l = 'Position'.        ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'ERDAT'.     ls-seltext_l = 'Angelegt am'.     ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'LFDAT'.     ls-seltext_l = 'Lieferdatum'.     ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'WADAT_IST'. ls-seltext_l = 'WA-Datum'.        ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'KUNNR'.     ls-seltext_l = 'Kunde'.           ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'NAME1'.     ls-seltext_l = 'Kundenname'.      ls-outputlen = 30. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'MATNR'.     ls-seltext_l = 'Material'.        ls-outputlen = 18. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'ARKTX'.     ls-seltext_l = 'Bezeichnung'.     ls-outputlen = 30. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'LFIMG'.     ls-seltext_l = 'Liefermenge'.     ls-outputlen = 13. ls-do_sum = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'VRKME'.     ls-seltext_l = 'ME'.              ls-outputlen = 4.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'VGBEL'.     ls-seltext_l = 'Auftrag'.         ls-outputlen = 10. ls-hotspot = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'VGPOS'.     ls-seltext_l = 'Auftr.Pos'.       ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'FKSTA_TXT'. ls-seltext_l = 'Fakturastatus'.   ls-outputlen = 20. APPEND ls TO ct_fcat.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form BUILD_FCAT_ORDER
-*&---------------------------------------------------------------------*
-FORM build_fcat_order CHANGING ct_fcat TYPE slis_t_fieldcat_alv.
-
-  DATA: ls TYPE slis_fieldcat_alv.
-
-  CLEAR ct_fcat.
-
-  CLEAR ls. ls-fieldname = 'VBELN'.     ls-seltext_l = 'Auftrag'.            ls-outputlen = 10. ls-hotspot = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'POSNR'.     ls-seltext_l = 'Position'.           ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'AUDAT'.     ls-seltext_l = 'Auftragsdatum'.      ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'AUART'.     ls-seltext_l = 'Auftragsart'.        ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'KUNNR'.     ls-seltext_l = 'Kunde'.              ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'NAME1'.     ls-seltext_l = 'Kundenname'.         ls-outputlen = 30. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'MATNR'.     ls-seltext_l = 'Material'.           ls-outputlen = 18. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'ARKTX'.     ls-seltext_l = 'Bezeichnung'.        ls-outputlen = 30. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'KWMENG'.    ls-seltext_l = 'Auftragsmenge'.      ls-outputlen = 13. ls-do_sum = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'VRKME'.     ls-seltext_l = 'ME'.                 ls-outputlen = 4.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'NETWR'.     ls-seltext_l = 'Nettowert'.          ls-outputlen = 15. ls-do_sum = 'X'. ls-cfieldname = 'WAERK'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'WAERK'.     ls-seltext_l = 'Waehr.'.             ls-outputlen = 5.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'FKSTA_TXT'. ls-seltext_l = 'Fakturastatus'.      ls-outputlen = 20. APPEND ls TO ct_fcat.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form BUILD_FCAT_BILLING
-*&---------------------------------------------------------------------*
-FORM build_fcat_billing CHANGING ct_fcat TYPE slis_t_fieldcat_alv.
-
-  DATA: ls TYPE slis_fieldcat_alv.
-
-  CLEAR ct_fcat.
-
-  CLEAR ls. ls-fieldname = 'VBELN'.     ls-seltext_l = 'Faktura'.             ls-outputlen = 10. ls-hotspot = 'X'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'FKDAT'.     ls-seltext_l = 'Fakturadatum'.        ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'FKART'.     ls-seltext_l = 'Fakturaart'.          ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'BUKRS'.     ls-seltext_l = 'Buchungskreis'.       ls-outputlen = 6.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'KUNAG'.     ls-seltext_l = 'Auftraggeber'.        ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'NAME1'.     ls-seltext_l = 'Kundenname'.          ls-outputlen = 30. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'NETWR'.     ls-seltext_l = 'Nettowert'.           ls-outputlen = 15. ls-do_sum = 'X'. ls-cfieldname = 'WAERK'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'MWSBK'.     ls-seltext_l = 'Steuerbetrag'.        ls-outputlen = 15. ls-do_sum = 'X'. ls-cfieldname = 'WAERK'. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'WAERK'.     ls-seltext_l = 'Waehr.'.              ls-outputlen = 5.  APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'RFBSK_TXT'. ls-seltext_l = 'Buchungsstatus'.      ls-outputlen = 20. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'ERDAT'.     ls-seltext_l = 'Angelegt am'.         ls-outputlen = 10. APPEND ls TO ct_fcat.
-  CLEAR ls. ls-fieldname = 'ERNAM'.     ls-seltext_l = 'Angelegt von'.        ls-outputlen = 12. APPEND ls TO ct_fcat.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form TOP_DELIVERY
-*&---------------------------------------------------------------------*
-*& ALV Block Header: Nicht fakturierte Lieferungen
-*&---------------------------------------------------------------------*
-FORM top_delivery.                                          "#EC CALLED
-
-  DATA: lt_header TYPE slis_t_listheader,
-        ls_header TYPE slis_listheader,
-        lv_count  TYPE i,
-        lv_text   TYPE char70.
-
-  ls_header-typ  = 'H'.
-  ls_header-info = 'Nicht fakturierte Lieferungen'.
-  APPEND ls_header TO lt_header.
-
-  DESCRIBE TABLE gt_delivery LINES lv_count.
-  WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-  CONCATENATE 'Anzahl Positionen:' lv_text INTO lv_text SEPARATED BY space.
-  CLEAR ls_header.
-  ls_header-typ  = 'S'.
-  ls_header-key  = 'Ergebnis'.
-  ls_header-info = lv_text.
-  APPEND ls_header TO lt_header.
-
-  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
-    EXPORTING
-      it_list_commentary = lt_header.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form TOP_ORDER
-*&---------------------------------------------------------------------*
-*& ALV Block Header: Auftragsbezogen fakturierbare Auftraege
-*&---------------------------------------------------------------------*
-FORM top_order.                                             "#EC CALLED
-
-  DATA: lt_header TYPE slis_t_listheader,
-        ls_header TYPE slis_listheader,
-        lv_count  TYPE i,
-        lv_text   TYPE char70.
-
-  ls_header-typ  = 'H'.
-  ls_header-info = 'Auftragsbezogen fakturierbare Auftraege'.
-  APPEND ls_header TO lt_header.
-
-  DESCRIBE TABLE gt_order LINES lv_count.
-  WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-  CONCATENATE 'Anzahl Positionen:' lv_text INTO lv_text SEPARATED BY space.
-  CLEAR ls_header.
-  ls_header-typ  = 'S'.
-  ls_header-key  = 'Ergebnis'.
-  ls_header-info = lv_text.
-  APPEND ls_header TO lt_header.
-
-  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
-    EXPORTING
-      it_list_commentary = lt_header.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form TOP_BILLING
-*&---------------------------------------------------------------------*
-*& ALV Block Header: Fakturen nicht in Buchhaltung
-*&---------------------------------------------------------------------*
-FORM top_billing.                                           "#EC CALLED
-
-  DATA: lt_header TYPE slis_t_listheader,
-        ls_header TYPE slis_listheader,
-        lv_count  TYPE i,
-        lv_text   TYPE char70.
-
-  ls_header-typ  = 'H'.
-  ls_header-info = 'Fakturen - nicht in Buchhaltung gebucht'.
-  APPEND ls_header TO lt_header.
-
-  DESCRIBE TABLE gt_billing LINES lv_count.
-  WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-  CONCATENATE 'Anzahl Positionen:' lv_text INTO lv_text SEPARATED BY space.
-  CLEAR ls_header.
-  ls_header-typ  = 'S'.
-  ls_header-key  = 'Ergebnis'.
-  ls_header-info = lv_text.
-  APPEND ls_header TO lt_header.
-
-  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
-    EXPORTING
-      it_list_commentary = lt_header.
-
-ENDFORM.
-
-
-*&---------------------------------------------------------------------*
-*& Form USER_COMMAND
-*&---------------------------------------------------------------------*
-*& Callback fuer Doppelklick/Hotspot-Navigation in den ALV-Bloecken.
-*& Navigiert zum jeweiligen Beleg (VL03N, VA03, VF03).
-*&---------------------------------------------------------------------*
-FORM user_command USING r_ucomm     LIKE sy-ucomm
-                        rs_selfield TYPE slis_selfield.     "#EC CALLED
-
-  DATA: lv_vbeln TYPE vbeln.
-
-  CHECK r_ucomm = '&IC1'.  " Hotspot click
-
-  lv_vbeln = rs_selfield-value.
-
-  CASE rs_selfield-tabname.
-
-    WHEN 'GT_DELIVERY'.
-      CASE rs_selfield-fieldname.
-        WHEN 'VBELN'.
-          SET PARAMETER ID 'VL' FIELD lv_vbeln.
-          CALL TRANSACTION 'VL03N' AND SKIP FIRST SCREEN.
-        WHEN 'VGBEL'.
-          SET PARAMETER ID 'AUN' FIELD lv_vbeln.
-          CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
       ENDCASE.
 
-    WHEN 'GT_ORDER'.
-      IF rs_selfield-fieldname = 'VBELN'.
-        SET PARAMETER ID 'AUN' FIELD lv_vbeln.
-        CALL TRANSACTION 'VA03' AND SKIP FIRST SCREEN.
-      ENDIF.
+    CATCH cx_salv_msg INTO lx_msg.
+      MESSAGE lx_msg TYPE 'S' DISPLAY LIKE 'E'.
+      RETURN.
+  ENDTRY.
 
-    WHEN 'GT_BILLING'.
-      IF rs_selfield-fieldname = 'VBELN'.
-        SET PARAMETER ID 'VF' FIELD lv_vbeln.
-        CALL TRANSACTION 'VF03' AND SKIP FIRST SCREEN.
-      ENDIF.
+  " Display settings
+  lo_display = lo_salv->get_display_settings( ).
+  lo_display->set_list_header( lv_title ).
+  lo_display->set_striped_pattern( abap_true ).
 
-  ENDCASE.
+  " Enable ALV standard functions (sort, filter, export, etc.)
+  lo_funcs = lo_salv->get_functions( ).
+  lo_funcs->set_all( abap_true ).
+
+  " Register event handler for hotspot navigation
+  CREATE OBJECT lo_handler
+    EXPORTING iv_mode = lv_mode.
+
+  lo_events = lo_salv->get_event( ).
+  SET HANDLER lo_handler->on_link_click FOR lo_events.
+
+  " Optimize column widths
+  lo_columns = lo_salv->get_columns( ).
+  lo_columns->set_optimize( abap_true ).
+
+  lo_salv->display( ).
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form SET_COLUMNS_DELIVERY
+*&---------------------------------------------------------------------*
+*& Spalteneinstellungen fuer Lieferungs-ALV
+*&---------------------------------------------------------------------*
+FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
+
+  DATA: lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_column  TYPE REF TO cl_salv_column_table.
+
+  lo_columns = io_salv->get_columns( ).
+
+  TRY.
+      " Traffic light column
+      lo_column ?= lo_columns->get_column( 'AMPEL' ).
+      lo_column->set_short_text( 'Status' ).
+      lo_columns->set_exception_column( 'AMPEL' ).
+
+      lo_column ?= lo_columns->get_column( 'VBELN' ).
+      lo_column->set_short_text( 'Lieferung' ).
+      lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      lo_column ?= lo_columns->get_column( 'POSNR' ).
+      lo_column->set_short_text( 'Position' ).
+
+      lo_column ?= lo_columns->get_column( 'ERDAT' ).
+      lo_column->set_short_text( 'Angelegt' ).
+
+      lo_column ?= lo_columns->get_column( 'LFDAT' ).
+      lo_column->set_short_text( 'Lieferdat' ).
+
+      lo_column ?= lo_columns->get_column( 'WADAT_IST' ).
+      lo_column->set_short_text( 'WA-Datum' ).
+
+      lo_column ?= lo_columns->get_column( 'KUNNR' ).
+      lo_column->set_short_text( 'Kunde' ).
+
+      lo_column ?= lo_columns->get_column( 'NAME1' ).
+      lo_column->set_short_text( 'Kundenname' ).
+
+      lo_column ?= lo_columns->get_column( 'MATNR' ).
+      lo_column->set_short_text( 'Material' ).
+
+      lo_column ?= lo_columns->get_column( 'ARKTX' ).
+      lo_column->set_short_text( 'Bezeichng' ).
+
+      lo_column ?= lo_columns->get_column( 'LFIMG' ).
+      lo_column->set_short_text( 'Liefermng' ).
+
+      lo_column ?= lo_columns->get_column( 'VRKME' ).
+      lo_column->set_short_text( 'ME' ).
+
+      lo_column ?= lo_columns->get_column( 'VGBEL' ).
+      lo_column->set_short_text( 'Auftrag' ).
+      lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      lo_column ?= lo_columns->get_column( 'VGPOS' ).
+      lo_column->set_short_text( 'Auftr.Pos' ).
+
+      lo_column ?= lo_columns->get_column( 'FKSTA' ).
+      lo_column->set_technical( abap_true ).
+
+      lo_column ?= lo_columns->get_column( 'FKSTA_TXT' ).
+      lo_column->set_short_text( 'FaktStat' ).
+      lo_column->set_medium_text( 'Fakturastatus' ).
+
+    CATCH cx_salv_not_found.                            "#EC NO_HANDLER
+  ENDTRY.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form SET_COLUMNS_ORDER
+*&---------------------------------------------------------------------*
+*& Spalteneinstellungen fuer Auftrags-ALV
+*&---------------------------------------------------------------------*
+FORM set_columns_order USING io_salv TYPE REF TO cl_salv_table.
+
+  DATA: lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_column  TYPE REF TO cl_salv_column_table,
+        lo_aggrs   TYPE REF TO cl_salv_aggregations.
+
+  lo_columns = io_salv->get_columns( ).
+  lo_aggrs   = io_salv->get_aggregations( ).
+
+  TRY.
+      lo_column ?= lo_columns->get_column( 'AMPEL' ).
+      lo_column->set_short_text( 'Status' ).
+      lo_columns->set_exception_column( 'AMPEL' ).
+
+      lo_column ?= lo_columns->get_column( 'VBELN' ).
+      lo_column->set_short_text( 'Auftrag' ).
+      lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      lo_column ?= lo_columns->get_column( 'POSNR' ).
+      lo_column->set_short_text( 'Position' ).
+
+      lo_column ?= lo_columns->get_column( 'AUDAT' ).
+      lo_column->set_short_text( 'Auftr.Dat' ).
+
+      lo_column ?= lo_columns->get_column( 'AUART' ).
+      lo_column->set_short_text( 'Auftr.Art' ).
+
+      lo_column ?= lo_columns->get_column( 'KUNNR' ).
+      lo_column->set_short_text( 'Kunde' ).
+
+      lo_column ?= lo_columns->get_column( 'NAME1' ).
+      lo_column->set_short_text( 'Kundenname' ).
+
+      lo_column ?= lo_columns->get_column( 'MATNR' ).
+      lo_column->set_short_text( 'Material' ).
+
+      lo_column ?= lo_columns->get_column( 'ARKTX' ).
+      lo_column->set_short_text( 'Bezeichng' ).
+
+      lo_column ?= lo_columns->get_column( 'KWMENG' ).
+      lo_column->set_short_text( 'AuftrMeng' ).
+
+      lo_column ?= lo_columns->get_column( 'VRKME' ).
+      lo_column->set_short_text( 'ME' ).
+
+      lo_column ?= lo_columns->get_column( 'NETWR' ).
+      lo_column->set_short_text( 'Nettowert' ).
+
+      lo_column ?= lo_columns->get_column( 'WAERK' ).
+      lo_column->set_short_text( 'Waehr.' ).
+
+      lo_column ?= lo_columns->get_column( 'FKREL' ).
+      lo_column->set_technical( abap_true ).
+
+      lo_column ?= lo_columns->get_column( 'FKSTA' ).
+      lo_column->set_technical( abap_true ).
+
+      lo_column ?= lo_columns->get_column( 'FKSTA_TXT' ).
+      lo_column->set_short_text( 'FaktStat' ).
+      lo_column->set_medium_text( 'Fakturastatus' ).
+
+      lo_aggrs->add_aggregation( columnname = 'KWMENG' aggregation = if_salv_c_aggregation=>total ).
+      lo_aggrs->add_aggregation( columnname = 'NETWR'  aggregation = if_salv_c_aggregation=>total ).
+
+    CATCH cx_salv_not_found cx_salv_data_error cx_salv_existing. "#EC NO_HANDLER
+  ENDTRY.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form SET_COLUMNS_BILLING
+*&---------------------------------------------------------------------*
+*& Spalteneinstellungen fuer Faktura-ALV
+*&---------------------------------------------------------------------*
+FORM set_columns_billing USING io_salv TYPE REF TO cl_salv_table.
+
+  DATA: lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_column  TYPE REF TO cl_salv_column_table,
+        lo_aggrs   TYPE REF TO cl_salv_aggregations.
+
+  lo_columns = io_salv->get_columns( ).
+  lo_aggrs   = io_salv->get_aggregations( ).
+
+  TRY.
+      lo_column ?= lo_columns->get_column( 'AMPEL' ).
+      lo_column->set_short_text( 'Status' ).
+      lo_columns->set_exception_column( 'AMPEL' ).
+
+      lo_column ?= lo_columns->get_column( 'VBELN' ).
+      lo_column->set_short_text( 'Faktura' ).
+      lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      lo_column ?= lo_columns->get_column( 'FKDAT' ).
+      lo_column->set_short_text( 'Fakt.Dat' ).
+
+      lo_column ?= lo_columns->get_column( 'FKART' ).
+      lo_column->set_short_text( 'Fakt.Art' ).
+
+      lo_column ?= lo_columns->get_column( 'BUKRS' ).
+      lo_column->set_short_text( 'BuKrs' ).
+
+      lo_column ?= lo_columns->get_column( 'KUNAG' ).
+      lo_column->set_short_text( 'Auftrgeb' ).
+
+      lo_column ?= lo_columns->get_column( 'NAME1' ).
+      lo_column->set_short_text( 'Kundenname' ).
+
+      lo_column ?= lo_columns->get_column( 'NETWR' ).
+      lo_column->set_short_text( 'Nettowert' ).
+
+      lo_column ?= lo_columns->get_column( 'MWSBK' ).
+      lo_column->set_short_text( 'Steuer' ).
+
+      lo_column ?= lo_columns->get_column( 'WAERK' ).
+      lo_column->set_short_text( 'Waehr.' ).
+
+      lo_column ?= lo_columns->get_column( 'RFBSK' ).
+      lo_column->set_technical( abap_true ).
+
+      lo_column ?= lo_columns->get_column( 'RFBSK_TXT' ).
+      lo_column->set_short_text( 'BuchStat' ).
+      lo_column->set_medium_text( 'Buchungsstatus' ).
+
+      lo_column ?= lo_columns->get_column( 'ERDAT' ).
+      lo_column->set_short_text( 'Angelegt' ).
+
+      lo_column ?= lo_columns->get_column( 'ERNAM' ).
+      lo_column->set_short_text( 'Ersteller' ).
+
+      lo_aggrs->add_aggregation( columnname = 'NETWR' aggregation = if_salv_c_aggregation=>total ).
+      lo_aggrs->add_aggregation( columnname = 'MWSBK' aggregation = if_salv_c_aggregation=>total ).
+
+    CATCH cx_salv_not_found cx_salv_data_error cx_salv_existing. "#EC NO_HANDLER
+  ENDTRY.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form SET_COLUMNS_NAST
+*&---------------------------------------------------------------------*
+*& Spalteneinstellungen fuer NAST-Pruefungs-ALV
+*&---------------------------------------------------------------------*
+FORM set_columns_nast USING io_salv TYPE REF TO cl_salv_table.
+
+  DATA: lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_column  TYPE REF TO cl_salv_column_table,
+        lo_aggrs   TYPE REF TO cl_salv_aggregations.
+
+  lo_columns = io_salv->get_columns( ).
+  lo_aggrs   = io_salv->get_aggregations( ).
+
+  TRY.
+      lo_column ?= lo_columns->get_column( 'AMPEL' ).
+      lo_column->set_short_text( 'Status' ).
+      lo_columns->set_exception_column( 'AMPEL' ).
+
+      lo_column ?= lo_columns->get_column( 'VBELN' ).
+      lo_column->set_short_text( 'Faktura' ).
+      lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
+
+      lo_column ?= lo_columns->get_column( 'FKDAT' ).
+      lo_column->set_short_text( 'Fakt.Dat' ).
+
+      lo_column ?= lo_columns->get_column( 'FKART' ).
+      lo_column->set_short_text( 'Fakt.Art' ).
+
+      lo_column ?= lo_columns->get_column( 'BUKRS' ).
+      lo_column->set_short_text( 'BuKrs' ).
+
+      lo_column ?= lo_columns->get_column( 'KUNAG' ).
+      lo_column->set_short_text( 'Auftrgeb' ).
+
+      lo_column ?= lo_columns->get_column( 'NAME1' ).
+      lo_column->set_short_text( 'Kundenname' ).
+
+      lo_column ?= lo_columns->get_column( 'NETWR' ).
+      lo_column->set_short_text( 'Nettowert' ).
+
+      lo_column ?= lo_columns->get_column( 'WAERK' ).
+      lo_column->set_short_text( 'Waehr.' ).
+
+      lo_column ?= lo_columns->get_column( 'KSCHL' ).
+      lo_column->set_short_text( 'NachArt' ).
+      lo_column->set_medium_text( 'Nachrichtenart' ).
+
+      lo_column ?= lo_columns->get_column( 'VSTAT' ).
+      lo_column->set_technical( abap_true ).
+
+      lo_column ?= lo_columns->get_column( 'VSTAT_TXT' ).
+      lo_column->set_short_text( 'NachStat' ).
+      lo_column->set_medium_text( 'Nachrichtenstatus' ).
+
+      lo_aggrs->add_aggregation( columnname = 'NETWR' aggregation = if_salv_c_aggregation=>total ).
+
+    CATCH cx_salv_not_found cx_salv_data_error cx_salv_existing. "#EC NO_HANDLER
+  ENDTRY.
 
 ENDFORM.
 
@@ -545,7 +791,7 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form BUILD_CSV_CONTENT
 *&---------------------------------------------------------------------*
-*& Erzeugt den CSV-Inhalt (Semikolon-getrennt) fuer alle drei Bloecke.
+*& Erzeugt den CSV-Inhalt (Semikolon-getrennt) fuer den aktiven Block.
 *& Wird von Excel-Export und E-Mail-Versand gemeinsam genutzt.
 *&---------------------------------------------------------------------*
 FORM build_csv_content CHANGING ct_csv TYPE string_table.
@@ -558,85 +804,112 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
 
   FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
                  <fs_ord> TYPE ty_order,
-                 <fs_bil> TYPE ty_billing.
+                 <fs_bil> TYPE ty_billing,
+                 <fs_nst> TYPE ty_nast_check.
 
   CLEAR ct_csv.
 
-  "--- Block 1: Nicht fakturierte Lieferungen ---
-  IF gt_delivery IS NOT INITIAL.
-    APPEND 'Nicht fakturierte Lieferungen' TO ct_csv.
+  CASE abap_true.
 
-    CONCATENATE
-      'Lieferung' 'Position' 'Angelegt am' 'Lieferdatum'
-      'WA-Datum' 'Kunde' 'Kundenname' 'Material'
-      'Bezeichnung' 'Liefermenge' 'ME' 'Auftrag'
-      'Auftr.Pos' 'Fakturastatus'
-      INTO lv_line SEPARATED BY gc_csv_sep.
-    APPEND lv_line TO ct_csv.
+    "--- Nicht fakturierte Lieferungen ---
+    WHEN p_deliv.
+      IF gt_delivery IS NOT INITIAL.
+        APPEND 'Nicht fakturierte Lieferungen' TO ct_csv.
 
-    LOOP AT gt_delivery ASSIGNING <fs_del>.
-      WRITE <fs_del>-lfimg TO lv_lfimg LEFT-JUSTIFIED.
-      CONCATENATE
-        <fs_del>-vbeln <fs_del>-posnr <fs_del>-erdat <fs_del>-lfdat
-        <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
-        <fs_del>-arktx lv_lfimg <fs_del>-vrkme <fs_del>-vgbel
-        <fs_del>-vgpos <fs_del>-fksta_txt
-        INTO lv_line SEPARATED BY gc_csv_sep.
-      APPEND lv_line TO ct_csv.
-    ENDLOOP.
+        CONCATENATE
+          'Lieferung' 'Position' 'Angelegt am' 'Lieferdatum'
+          'WA-Datum' 'Kunde' 'Kundenname' 'Material'
+          'Bezeichnung' 'Liefermenge' 'ME' 'Auftrag'
+          'Auftr.Pos' 'Fakturastatus'
+          INTO lv_line SEPARATED BY gc_csv_sep.
+        APPEND lv_line TO ct_csv.
 
-    APPEND space TO ct_csv.
-  ENDIF.
+        LOOP AT gt_delivery ASSIGNING <fs_del>.
+          WRITE <fs_del>-lfimg TO lv_lfimg LEFT-JUSTIFIED.
+          CONCATENATE
+            <fs_del>-vbeln <fs_del>-posnr <fs_del>-erdat <fs_del>-lfdat
+            <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
+            <fs_del>-arktx lv_lfimg <fs_del>-vrkme <fs_del>-vgbel
+            <fs_del>-vgpos <fs_del>-fksta_txt
+            INTO lv_line SEPARATED BY gc_csv_sep.
+          APPEND lv_line TO ct_csv.
+        ENDLOOP.
+      ENDIF.
 
-  "--- Block 2: Auftragsbezogen fakturierbare Auftraege ---
-  IF gt_order IS NOT INITIAL.
-    APPEND 'Auftragsbezogen fakturierbare Auftraege' TO ct_csv.
+    "--- Auftragsbezogen fakturierbare Auftraege ---
+    WHEN p_order.
+      IF gt_order IS NOT INITIAL.
+        APPEND 'Auftragsbezogen fakturierbare Auftraege' TO ct_csv.
 
-    CONCATENATE
-      'Auftrag' 'Position' 'Auftragsdatum' 'Auftragsart'
-      'Kunde' 'Kundenname' 'Material' 'Bezeichnung'
-      'Auftragsmenge' 'ME' 'Nettowert' 'Waehrung'
-      'Fakturastatus'
-      INTO lv_line SEPARATED BY gc_csv_sep.
-    APPEND lv_line TO ct_csv.
+        CONCATENATE
+          'Auftrag' 'Position' 'Auftragsdatum' 'Auftragsart'
+          'Kunde' 'Kundenname' 'Material' 'Bezeichnung'
+          'Auftragsmenge' 'ME' 'Nettowert' 'Waehrung'
+          'Fakturastatus'
+          INTO lv_line SEPARATED BY gc_csv_sep.
+        APPEND lv_line TO ct_csv.
 
-    LOOP AT gt_order ASSIGNING <fs_ord>.
-      WRITE <fs_ord>-kwmeng TO lv_kwmng LEFT-JUSTIFIED.
-      WRITE <fs_ord>-netwr  TO lv_netwr LEFT-JUSTIFIED.
-      CONCATENATE
-        <fs_ord>-vbeln <fs_ord>-posnr <fs_ord>-audat <fs_ord>-auart
-        <fs_ord>-kunnr <fs_ord>-name1 <fs_ord>-matnr <fs_ord>-arktx
-        lv_kwmng <fs_ord>-vrkme lv_netwr <fs_ord>-waerk
-        <fs_ord>-fksta_txt
-        INTO lv_line SEPARATED BY gc_csv_sep.
-      APPEND lv_line TO ct_csv.
-    ENDLOOP.
+        LOOP AT gt_order ASSIGNING <fs_ord>.
+          WRITE <fs_ord>-kwmeng TO lv_kwmng LEFT-JUSTIFIED.
+          WRITE <fs_ord>-netwr  TO lv_netwr LEFT-JUSTIFIED.
+          CONCATENATE
+            <fs_ord>-vbeln <fs_ord>-posnr <fs_ord>-audat <fs_ord>-auart
+            <fs_ord>-kunnr <fs_ord>-name1 <fs_ord>-matnr <fs_ord>-arktx
+            lv_kwmng <fs_ord>-vrkme lv_netwr <fs_ord>-waerk
+            <fs_ord>-fksta_txt
+            INTO lv_line SEPARATED BY gc_csv_sep.
+          APPEND lv_line TO ct_csv.
+        ENDLOOP.
+      ENDIF.
 
-    APPEND space TO ct_csv.
-  ENDIF.
+    "--- Fakturen nicht in Buchhaltung ---
+    WHEN p_billi.
+      IF gt_billing IS NOT INITIAL.
+        APPEND 'Fakturen - nicht in Buchhaltung gebucht' TO ct_csv.
 
-  "--- Block 3: Fakturen nicht in Buchhaltung ---
-  IF gt_billing IS NOT INITIAL.
-    APPEND 'Fakturen - nicht in Buchhaltung gebucht' TO ct_csv.
+        CONCATENATE
+          'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
+          'Auftraggeber' 'Kundenname' 'Nettowert' 'Steuerbetrag'
+          'Waehrung' 'Buchungsstatus' 'Angelegt am' 'Angelegt von'
+          INTO lv_line SEPARATED BY gc_csv_sep.
+        APPEND lv_line TO ct_csv.
 
-    CONCATENATE
-      'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
-      'Auftraggeber' 'Kundenname' 'Nettowert' 'Steuerbetrag'
-      'Waehrung' 'Buchungsstatus' 'Angelegt am' 'Angelegt von'
-      INTO lv_line SEPARATED BY gc_csv_sep.
-    APPEND lv_line TO ct_csv.
+        LOOP AT gt_billing ASSIGNING <fs_bil>.
+          WRITE <fs_bil>-netwr TO lv_netwr LEFT-JUSTIFIED.
+          WRITE <fs_bil>-mwsbk TO lv_mwsbk LEFT-JUSTIFIED.
+          CONCATENATE
+            <fs_bil>-vbeln <fs_bil>-fkdat <fs_bil>-fkart <fs_bil>-bukrs
+            <fs_bil>-kunag <fs_bil>-name1 lv_netwr lv_mwsbk
+            <fs_bil>-waerk <fs_bil>-rfbsk_txt <fs_bil>-erdat <fs_bil>-ernam
+            INTO lv_line SEPARATED BY gc_csv_sep.
+          APPEND lv_line TO ct_csv.
+        ENDLOOP.
+      ENDIF.
 
-    LOOP AT gt_billing ASSIGNING <fs_bil>.
-      WRITE <fs_bil>-netwr TO lv_netwr LEFT-JUSTIFIED.
-      WRITE <fs_bil>-mwsbk TO lv_mwsbk LEFT-JUSTIFIED.
-      CONCATENATE
-        <fs_bil>-vbeln <fs_bil>-fkdat <fs_bil>-fkart <fs_bil>-bukrs
-        <fs_bil>-kunag <fs_bil>-name1 lv_netwr lv_mwsbk
-        <fs_bil>-waerk <fs_bil>-rfbsk_txt <fs_bil>-erdat <fs_bil>-ernam
-        INTO lv_line SEPARATED BY gc_csv_sep.
-      APPEND lv_line TO ct_csv.
-    ENDLOOP.
-  ENDIF.
+    "--- Rechnungen ohne / mit fehlerhafter Nachricht ---
+    WHEN p_nast.
+      IF gt_nast_check IS NOT INITIAL.
+        APPEND 'Rechnungen ohne / mit fehlerhafter Nachricht' TO ct_csv.
+
+        CONCATENATE
+          'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
+          'Auftraggeber' 'Kundenname' 'Nettowert' 'Waehrung'
+          'Nachrichtenart' 'Nachrichtenstatus'
+          INTO lv_line SEPARATED BY gc_csv_sep.
+        APPEND lv_line TO ct_csv.
+
+        LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+          WRITE <fs_nst>-netwr TO lv_netwr LEFT-JUSTIFIED.
+          CONCATENATE
+            <fs_nst>-vbeln <fs_nst>-fkdat <fs_nst>-fkart <fs_nst>-bukrs
+            <fs_nst>-kunag <fs_nst>-name1 lv_netwr <fs_nst>-waerk
+            <fs_nst>-kschl <fs_nst>-vstat_txt
+            INTO lv_line SEPARATED BY gc_csv_sep.
+          APPEND lv_line TO ct_csv.
+        ENDLOOP.
+      ENDIF.
+
+  ENDCASE.
 
 ENDFORM.
 
@@ -771,6 +1044,12 @@ FORM send_results_by_email.
       DESCRIBE TABLE gt_billing LINES lv_count.
       WRITE lv_count TO lv_text LEFT-JUSTIFIED.
       CONCATENATE 'Offene Fakturen (FI):' lv_text
+        INTO ls_body-line SEPARATED BY space.
+      APPEND ls_body TO lt_body.
+
+      DESCRIBE TABLE gt_nast_check LINES lv_count.
+      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
+      CONCATENATE 'Rechnungen ohne Nachricht:' lv_text
         INTO ls_body-line SEPARATED BY space.
       APPEND ls_body TO lt_body.
 
