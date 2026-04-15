@@ -8,10 +8,28 @@
 * Constants
 *----------------------------------------------------------------------*
 CONSTANTS:
+  " Traffic light (ALV exception column)
   gc_ampel_red    TYPE c LENGTH 1 VALUE '1',
   gc_ampel_yellow TYPE c LENGTH 1 VALUE '2',
   gc_ampel_green  TYPE c LENGTH 1 VALUE '3',
-  gc_csv_sep      TYPE c LENGTH 1 VALUE ';'.
+  " CSV separator
+  gc_csv_sep      TYPE c LENGTH 1 VALUE ';',
+  " Billing status VBUP-FKSTA
+  gc_fksta_open    TYPE fksta VALUE 'A',   " Nicht fakturiert
+  gc_fksta_partial TYPE fksta VALUE 'B',   " Teilweise fakturiert
+  " Accounting transfer status VBRK-RFBSK
+  gc_rfbsk_open    TYPE rfbsk VALUE ' ',   " Nicht uebertragen
+  gc_rfbsk_waiting TYPE rfbsk VALUE 'A',   " Nicht uebertragen
+  gc_rfbsk_error   TYPE rfbsk VALUE 'B',   " Fehlerhaft
+  gc_rfbsk_posted  TYPE rfbsk VALUE 'C',   " Gebucht
+  " Billing relevance VBAP-FKREL
+  gc_fkrel_order   TYPE fkrel VALUE 'B',   " Auftragsbezogene Faktura
+  " Message application NAST-KAPPL
+  gc_kappl_billing TYPE kappl VALUE 'V3',  " Fakturaausgabe
+  " Message processing status NAST-VSTAT
+  gc_vstat_initial TYPE c LENGTH 1 VALUE '0',  " Nicht verarbeitet
+  gc_vstat_ok      TYPE c LENGTH 1 VALUE '1',  " Erfolgreich
+  gc_vstat_error   TYPE c LENGTH 1 VALUE '2'.  " Fehlerhaft
 
 *----------------------------------------------------------------------*
 * Type Definitions

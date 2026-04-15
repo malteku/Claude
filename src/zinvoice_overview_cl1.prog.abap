@@ -20,14 +20,14 @@ CLASS lcl_alv_handler DEFINITION.
         IMPORTING row column.
 
   PRIVATE SECTION.
-    DATA: gv_mode TYPE c LENGTH 1.
+    DATA: mv_mode TYPE c LENGTH 1.
 
 ENDCLASS.
 
 CLASS lcl_alv_handler IMPLEMENTATION.
 
   METHOD constructor.
-    gv_mode = iv_mode.
+    mv_mode = iv_mode.
   ENDMETHOD.
 
   METHOD on_link_click.
@@ -39,7 +39,7 @@ CLASS lcl_alv_handler IMPLEMENTATION.
                    <fs_bil> TYPE ty_billing,
                    <fs_nst> TYPE ty_nast_check.
 
-    CASE gv_mode.
+    CASE mv_mode.
 
       WHEN 'D'.  " Delivery
         CASE column.
@@ -99,19 +99,24 @@ ENDCLASS.
 *&---------------------------------------------------------------------*
 FORM select_deliveries.
 
-  SELECT l~vbeln p~posnr l~erdat l~lfdat l~wadat_ist l~kunnr
-         p~matnr p~arktx p~lfimg p~vrkme p~vgbel p~vgpos
-         u~fksta
+  SELECT delivery~vbeln    item~posnr
+         delivery~erdat    delivery~lfdat
+         delivery~wadat_ist delivery~kunnr
+         item~matnr        item~arktx
+         item~lfimg        item~vrkme
+         item~vgbel        item~vgpos
+         status~fksta
     INTO CORRESPONDING FIELDS OF TABLE gt_delivery
-    FROM likp AS l
-    INNER JOIN lips AS p ON p~vbeln = l~vbeln
-    INNER JOIN vbup AS u ON u~vbeln = p~vbeln
-                        AND u~posnr = p~posnr
-    WHERE l~vkorg IN s_vkorg
-      AND l~lfdat IN s_lfdat
-      AND l~kunnr IN s_kunnr
-      AND ( u~fksta = 'A' OR u~fksta = 'B' )
-      AND p~lfimg > 0.
+    FROM likp AS delivery
+    INNER JOIN lips AS item   ON item~vbeln    = delivery~vbeln
+    INNER JOIN vbup AS status ON status~vbeln   = item~vbeln
+                              AND status~posnr  = item~posnr
+    WHERE delivery~vkorg IN s_vkorg
+      AND delivery~lfdat IN s_lfdat
+      AND delivery~kunnr IN s_kunnr
+      AND ( status~fksta = gc_fksta_open
+         OR status~fksta = gc_fksta_partial )
+      AND item~lfimg > 0.
 
   CHECK gt_delivery IS NOT INITIAL.
 
@@ -120,7 +125,7 @@ FORM select_deliveries.
 
   LOOP AT gt_delivery ASSIGNING <fs_del>.
     CASE <fs_del>-fksta.
-      WHEN 'A'.
+      WHEN gc_fksta_open.
         <fs_del>-fksta_txt = 'Nicht fakturiert'.
         IF <fs_del>-wadat_ist IS NOT INITIAL.
           " Warenausgang gebucht aber nicht fakturiert -> Rot
@@ -129,7 +134,7 @@ FORM select_deliveries.
           " Warenausgang noch nicht gebucht -> Gelb
           <fs_del>-ampel = gc_ampel_yellow.
         ENDIF.
-      WHEN 'B'.
+      WHEN gc_fksta_partial.
         <fs_del>-fksta_txt = 'Teilw. fakturiert'.
         <fs_del>-ampel = gc_ampel_yellow.
     ENDCASE.
@@ -149,22 +154,25 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM select_orders.
 
-  SELECT k~vbeln p~posnr k~audat k~auart k~kunnr
-         p~matnr p~arktx p~kwmeng p~vrkme
-         p~netwr k~waerk p~fkrel u~fksta
+  SELECT header~vbeln   item~posnr
+         header~audat   header~auart   header~kunnr
+         item~matnr     item~arktx     item~kwmeng
+         item~vrkme     item~netwr     header~waerk
+         item~fkrel     status~fksta
     INTO CORRESPONDING FIELDS OF TABLE gt_order
-    FROM vbak AS k
-    INNER JOIN vbap AS p ON p~vbeln = k~vbeln
-    INNER JOIN vbup AS u ON u~vbeln = p~vbeln
-                        AND u~posnr = p~posnr
-    WHERE k~vkorg IN s_vkorg
-      AND k~vtweg IN s_vtweg
-      AND k~spart IN s_spart
-      AND k~audat IN s_audat
-      AND k~kunnr IN s_kunnr
-      AND p~fkrel = 'B'
-      AND ( u~fksta = 'A' OR u~fksta = 'B' )
-      AND p~abgru = space.
+    FROM vbak AS header
+    INNER JOIN vbap AS item   ON item~vbeln    = header~vbeln
+    INNER JOIN vbup AS status ON status~vbeln   = item~vbeln
+                              AND status~posnr  = item~posnr
+    WHERE header~vkorg IN s_vkorg
+      AND header~vtweg IN s_vtweg
+      AND header~spart IN s_spart
+      AND header~audat IN s_audat
+      AND header~kunnr IN s_kunnr
+      AND item~fkrel = gc_fkrel_order
+      AND ( status~fksta = gc_fksta_open
+         OR status~fksta = gc_fksta_partial )
+      AND item~abgru = space.
 
   CHECK gt_order IS NOT INITIAL.
 
@@ -173,10 +181,10 @@ FORM select_orders.
 
   LOOP AT gt_order ASSIGNING <fs_ord>.
     CASE <fs_ord>-fksta.
-      WHEN 'A'.
+      WHEN gc_fksta_open.
         <fs_ord>-fksta_txt = 'Nicht fakturiert'.
         <fs_ord>-ampel = gc_ampel_yellow.
-      WHEN 'B'.
+      WHEN gc_fksta_partial.
         <fs_ord>-fksta_txt = 'Teilw. fakturiert'.
         <fs_ord>-ampel = gc_ampel_green.
     ENDCASE.
@@ -206,8 +214,8 @@ FORM select_billings.
       AND fkdat IN s_fkdat
       AND kunag IN s_kunnr
       AND bukrs IN s_bukrs
-      AND rfbsk <> 'C'
-      AND fksto <> 'X'.
+      AND rfbsk <> gc_rfbsk_posted
+      AND fksto <> abap_true.
 
   CHECK gt_billing IS NOT INITIAL.
 
@@ -216,13 +224,13 @@ FORM select_billings.
 
   LOOP AT gt_billing ASSIGNING <fs_bil>.
     CASE <fs_bil>-rfbsk.
-      WHEN space.
+      WHEN gc_rfbsk_open.
         <fs_bil>-rfbsk_txt = 'Nicht uebertragen'.
         <fs_bil>-ampel = gc_ampel_yellow.
-      WHEN 'A'.
+      WHEN gc_rfbsk_waiting.
         <fs_bil>-rfbsk_txt = 'Nicht uebertragen'.
         <fs_bil>-ampel = gc_ampel_yellow.
-      WHEN 'B'.
+      WHEN gc_rfbsk_error.
         <fs_bil>-rfbsk_txt = 'Fehlerhaft'.
         <fs_bil>-ampel = gc_ampel_red.
     ENDCASE.
@@ -246,15 +254,19 @@ FORM select_nast_check.
            objky TYPE nast-objky,
            kschl TYPE kschl,
            vstat TYPE c LENGTH 1,
-         END OF ty_nast_raw.
+         END OF ty_nast_raw,
+         BEGIN OF ty_objky,
+           objky TYPE nast-objky,
+         END OF ty_objky.
 
   DATA: lt_vbrk     TYPE STANDARD TABLE OF ty_nast_check,
+        lt_objkeys  TYPE STANDARD TABLE OF ty_objky,
         lt_nast     TYPE STANDARD TABLE OF ty_nast_raw,
         ls_nast     TYPE ty_nast_raw,
         lv_has_good TYPE abap_bool.
 
-  FIELD-SYMBOLS: <fs_vbrk> TYPE ty_nast_check,
-                 <fs_nast> TYPE ty_nast_raw.
+  FIELD-SYMBOLS: <fs_vbrk>  TYPE ty_nast_check,
+                 <fs_nast>  TYPE ty_nast_raw.
 
   " Selektiere alle relevanten Fakturen
   SELECT vbeln fkdat fkart bukrs kunag netwr waerk
@@ -266,17 +278,23 @@ FORM select_nast_check.
       AND fkdat IN s_fkdat
       AND kunag IN s_kunnr
       AND bukrs IN s_bukrs
-      AND fksto <> 'X'.
+      AND fksto <> abap_true.
 
   CHECK lt_vbrk IS NOT INITIAL.
+
+  " Hilfstabelle mit OBJKY-Typ aufbauen (NAST-OBJKY ist c70, VBELN ist c10)
+  LOOP AT lt_vbrk ASSIGNING <fs_vbrk>.
+    APPEND INITIAL LINE TO lt_objkeys ASSIGNING FIELD-SYMBOL(<objkey>).
+    <objkey>-objky = <fs_vbrk>-vbeln.
+  ENDLOOP.
 
   " NAST-Eintraege fuer diese Fakturen lesen
   SELECT objky kschl vstat
     INTO CORRESPONDING FIELDS OF TABLE lt_nast
     FROM nast
-    FOR ALL ENTRIES IN lt_vbrk
-    WHERE objky = lt_vbrk-vbeln
-      AND kappl = 'V3'.
+    FOR ALL ENTRIES IN lt_objkeys
+    WHERE objky = lt_objkeys-objky
+      AND kappl = gc_kappl_billing.
 
   SORT lt_nast BY objky.
 
@@ -291,7 +309,7 @@ FORM select_nast_check.
     IF sy-subrc <> 0.
       " Keine Nachricht vorhanden -> Rot
       <fs_vbrk>-ampel     = gc_ampel_red.
-      <fs_vbrk>-vstat     = '0'.
+      <fs_vbrk>-vstat     = gc_vstat_initial.
       <fs_vbrk>-vstat_txt = 'Keine Nachricht'.
       APPEND <fs_vbrk> TO gt_nast_check.
       CONTINUE.
@@ -303,7 +321,7 @@ FORM select_nast_check.
 
     LOOP AT lt_nast ASSIGNING <fs_nast>
       WHERE objky = <fs_vbrk>-vbeln.
-      IF <fs_nast>-vstat = '1'.
+      IF <fs_nast>-vstat = gc_vstat_ok.
         lv_has_good = abap_true.
         EXIT.
       ENDIF.
@@ -315,10 +333,10 @@ FORM select_nast_check.
       <fs_vbrk>-kschl = ls_nast-kschl.
       <fs_vbrk>-vstat = ls_nast-vstat.
       CASE ls_nast-vstat.
-        WHEN '0'.
+        WHEN gc_vstat_initial.
           <fs_vbrk>-ampel     = gc_ampel_yellow.
           <fs_vbrk>-vstat_txt = 'Nicht verarbeitet'.
-        WHEN '2'.
+        WHEN gc_vstat_error.
           <fs_vbrk>-ampel     = gc_ampel_red.
           <fs_vbrk>-vstat_txt = 'Fehlerhaft'.
         WHEN OTHERS.
