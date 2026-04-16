@@ -214,6 +214,7 @@ FORM select_billings.
       AND fkdat IN s_fkdat
       AND kunag IN s_kunnr
       AND bukrs IN s_bukrs
+      AND fkart IN s_fkart
       AND rfbsk <> gc_rfbsk_posted
       AND fksto <> abap_true.
 
@@ -278,6 +279,7 @@ FORM select_nast_check.
       AND fkdat IN s_fkdat
       AND kunag IN s_kunnr
       AND bukrs IN s_bukrs
+      AND fkart IN s_fkart
       AND fksto <> abap_true.
 
   CHECK lt_vbrk IS NOT INITIAL.

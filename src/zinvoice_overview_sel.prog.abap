@@ -12,7 +12,8 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE gv_t_b01.
     s_vkorg FOR gv_vkorg OBLIGATORY,
     s_vtweg FOR gv_vtweg,
     s_spart FOR gv_spart,
-    s_bukrs FOR gv_bukrs.
+    s_bukrs FOR gv_bukrs,
+    s_fkart FOR gv_fkart.
 SELECTION-SCREEN END OF BLOCK b01.
 
 SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE gv_t_b02.
@@ -56,6 +57,7 @@ INITIALIZATION.
   %_s_vtweg_%_app_%-text = 'Vertriebsweg'.
   %_s_spart_%_app_%-text = 'Sparte'.
   %_s_bukrs_%_app_%-text = 'Buchungskreis'.
+  %_s_fkart_%_app_%-text = 'Fakturaart'.
   %_s_kunnr_%_app_%-text = 'Kunde'.
   %_s_lfdat_%_app_%-text = 'Lieferdatum'.
   %_s_audat_%_app_%-text = 'Auftragsdatum'.
@@ -66,6 +68,12 @@ INITIALIZATION.
   %_p_nast_%_app_%-text  = 'Rechnungen ohne Nachricht'.
   %_p_excel_%_app_%-text = 'Excel-Export (Vordergr.)'.
   %_s_email_%_app_%-text = 'E-Mail-Empfaenger'.
+
+  " Default: Fakturaart F2
+  s_fkart-sign   = 'I'.
+  s_fkart-option = 'EQ'.
+  s_fkart-low    = 'F2'.
+  APPEND s_fkart.
 
 *----------------------------------------------------------------------*
 * AT SELECTION-SCREEN

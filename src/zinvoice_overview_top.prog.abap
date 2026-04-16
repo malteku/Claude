@@ -121,6 +121,7 @@ DATA:
   gv_spart TYPE spart,
   gv_kunnr TYPE kunnr,
   gv_bukrs TYPE bukrs,
+  gv_fkart TYPE fkart,
   gv_lfdat TYPE lfdat,
   gv_audat TYPE audat,
   gv_fkdat TYPE fkdat,
