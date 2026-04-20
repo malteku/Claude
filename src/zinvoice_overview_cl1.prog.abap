@@ -201,6 +201,7 @@ ENDFORM.
 *& Selektiert Fakturen, die noch nicht in die Buchhaltung uebertragen
 *& wurden.
 *& VBRK-RFBSK: ' '/A = Nicht uebertragen, B = Fehlerhaft, C = Gebucht
+*& VBRK-SFAKN = space -> kein Storno-Beleg (Stornobelege haben SFAKN gefuellt)
 *&---------------------------------------------------------------------*
 FORM select_billings.
 
@@ -216,7 +217,8 @@ FORM select_billings.
       AND bukrs IN s_bukrs
       AND fkart IN s_fkart
       AND rfbsk <> gc_rfbsk_posted
-      AND fksto <> abap_true.
+      AND fksto <> abap_true
+      AND sfakn = space.
 
   CHECK gt_billing IS NOT INITIAL.
 
@@ -280,7 +282,8 @@ FORM select_nast_check.
       AND kunag IN s_kunnr
       AND bukrs IN s_bukrs
       AND fkart IN s_fkart
-      AND fksto <> abap_true.
+      AND fksto <> abap_true
+      AND sfakn = space.
 
   CHECK lt_vbrk IS NOT INITIAL.
 
