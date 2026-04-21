@@ -32,7 +32,9 @@ CONSTANTS:
   " Message processing status NAST-VSTAT
   gc_vstat_initial TYPE c LENGTH 1 VALUE '0',  " Nicht verarbeitet
   gc_vstat_ok      TYPE c LENGTH 1 VALUE '1',  " Erfolgreich
-  gc_vstat_error   TYPE c LENGTH 1 VALUE '2'.  " Fehlerhaft
+  gc_vstat_error   TYPE c LENGTH 1 VALUE '2',  " Fehlerhaft
+  " Purchase order history type EKBE-BEWTP
+  gc_bewtp_gr      TYPE c LENGTH 1 VALUE 'E'.  " Wareneingang (Goods Receipt)
 
 *----------------------------------------------------------------------*
 * Type Definitions

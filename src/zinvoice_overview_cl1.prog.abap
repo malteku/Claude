@@ -149,10 +149,46 @@ ENDFORM.
 *& Form SELECT_ORDERS
 *&---------------------------------------------------------------------*
 *& Selektiert Streckenauftraege (Positionstyp TAS/YKPS), die
-*& auftragsbezogen fakturiert werden koennen.
+*& auftragsbezogen fakturiert werden koennen und zu denen eine
+*& belieferte Streckenbestellung existiert (WE ueber EKBE geprueft).
 *& VBUP-FKSTA: A = Nicht fakturiert, B = Teilweise fakturiert
 *&---------------------------------------------------------------------*
 FORM select_orders.
+
+  TYPES: BEGIN OF lty_pr_link,
+           vbeln TYPE vbeln,
+           posnr TYPE posnr,
+           banfn TYPE banfn,
+           bnfpo TYPE bnfpo,
+         END OF lty_pr_link.
+
+  TYPES: BEGIN OF lty_po_item,
+           banfn TYPE banfn,
+           bnfpo TYPE bnfpo,
+           ebeln TYPE ebeln,
+           ebelp TYPE ebelp,
+         END OF lty_po_item.
+
+  TYPES: BEGIN OF lty_gr_key,
+           ebeln TYPE ebeln,
+           ebelp TYPE ebelp,
+         END OF lty_gr_key.
+
+  TYPES: BEGIN OF lty_order_key,
+           vbeln TYPE vbeln,
+           posnr TYPE posnr,
+         END OF lty_order_key.
+
+  DATA: lt_pr_links  TYPE STANDARD TABLE OF lty_pr_link,
+        lt_po_items  TYPE STANDARD TABLE OF lty_po_item,
+        lt_gr_exists TYPE STANDARD TABLE OF lty_gr_key,
+        lt_delivered_orders TYPE HASHED TABLE OF lty_order_key
+                            WITH UNIQUE KEY vbeln posnr,
+        ls_key TYPE lty_order_key.
+
+  FIELD-SYMBOLS: <fs_ord> TYPE ty_order,
+                 <fs_po>  TYPE lty_po_item,
+                 <fs_pr>  TYPE lty_pr_link.
 
   SELECT header~vbeln   item~posnr
          header~audat   header~auart   header~kunnr
@@ -179,9 +215,89 @@ FORM select_orders.
 
   CHECK gt_order IS NOT INITIAL.
 
-  " Set traffic light and status text
-  FIELD-SYMBOLS: <fs_ord> TYPE ty_order.
+  " Nur Positionen mit belieferter Streckenbestellung behalten
+  " Kette: Auftrag (VBAP) -> BANF (EBKN) -> Bestellung (EKPO) -> WE (EKBE)
 
+  " 1. EBKN: Bestellanforderungen zu den Auftragspositionen
+  SELECT vbeln vbelp AS posnr banfn bnfpo
+    INTO CORRESPONDING FIELDS OF TABLE lt_pr_links
+    FROM ebkn
+    FOR ALL ENTRIES IN gt_order
+    WHERE vbeln = gt_order-vbeln
+      AND vbelp = gt_order-posnr.
+
+  IF lt_pr_links IS INITIAL.
+    CLEAR gt_order.
+    RETURN.
+  ENDIF.
+
+  " 2. EKPO: Bestellpositionen zu den BANFen (nicht geloescht)
+  SELECT banfn bnfpo ebeln ebelp
+    INTO CORRESPONDING FIELDS OF TABLE lt_po_items
+    FROM ekpo
+    FOR ALL ENTRIES IN lt_pr_links
+    WHERE banfn = lt_pr_links-banfn
+      AND bnfpo = lt_pr_links-bnfpo
+      AND loekz = space.
+
+  IF lt_po_items IS INITIAL.
+    CLEAR gt_order.
+    RETURN.
+  ENDIF.
+
+  " 3. EKBE: Wareneingaenge pruefen
+  SELECT ebeln ebelp
+    INTO TABLE lt_gr_exists
+    FROM ekbe
+    FOR ALL ENTRIES IN lt_po_items
+    WHERE ebeln = lt_po_items-ebeln
+      AND ebelp = lt_po_items-ebelp
+      AND bewtp = gc_bewtp_gr.
+
+  SORT lt_gr_exists BY ebeln ebelp.
+  DELETE ADJACENT DUPLICATES FROM lt_gr_exists COMPARING ebeln ebelp.
+
+  IF lt_gr_exists IS INITIAL.
+    CLEAR gt_order.
+    RETURN.
+  ENDIF.
+
+  " 4. Rueckwaerts-Verknuepfung: PO mit WE -> BANF -> Auftrag
+  LOOP AT lt_po_items ASSIGNING <fs_po>.
+    READ TABLE lt_gr_exists WITH KEY ebeln = <fs_po>-ebeln
+                                     ebelp = <fs_po>-ebelp
+                            TRANSPORTING NO FIELDS
+                            BINARY SEARCH.
+    CHECK sy-subrc = 0.
+    LOOP AT lt_pr_links ASSIGNING <fs_pr>
+      WHERE banfn = <fs_po>-banfn
+        AND bnfpo = <fs_po>-bnfpo.
+      ls_key-vbeln = <fs_pr>-vbeln.
+      ls_key-posnr = <fs_pr>-posnr.
+      INSERT ls_key INTO TABLE lt_delivered_orders.
+    ENDLOOP.
+  ENDLOOP.
+
+  IF lt_delivered_orders IS INITIAL.
+    CLEAR gt_order.
+    RETURN.
+  ENDIF.
+
+  " 5. gt_order filtern: nur belieferte Positionen behalten
+  LOOP AT gt_order ASSIGNING <fs_ord>.
+    ls_key-vbeln = <fs_ord>-vbeln.
+    ls_key-posnr = <fs_ord>-posnr.
+    READ TABLE lt_delivered_orders WITH KEY vbeln = ls_key-vbeln
+                                           posnr = ls_key-posnr
+                                  TRANSPORTING NO FIELDS.
+    IF sy-subrc <> 0.
+      DELETE gt_order.
+    ENDIF.
+  ENDLOOP.
+
+  CHECK gt_order IS NOT INITIAL.
+
+  " Set traffic light and status text
   LOOP AT gt_order ASSIGNING <fs_ord>.
     CASE <fs_ord>-fksta.
       WHEN gc_fksta_open.
