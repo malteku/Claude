@@ -23,7 +23,7 @@ CONSTANTS:
   gc_rfbsk_error   TYPE rfbsk VALUE 'B',   " Fehlerhaft
   gc_rfbsk_posted  TYPE rfbsk VALUE 'C',   " Gebucht
   " Billing relevance VBAP-FKREL
-  gc_fkrel_order   TYPE fkrel VALUE 'B',   " Auftragsbezogene Faktura
+  gc_fkrel_delivery TYPE fkrel VALUE 'A',  " Lieferbezogene Faktura
   " Message application NAST-KAPPL
   gc_kappl_billing TYPE kappl VALUE 'V3',  " Fakturaausgabe
   " Message processing status NAST-VSTAT
