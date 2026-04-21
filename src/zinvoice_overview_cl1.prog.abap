@@ -402,7 +402,8 @@ FORM select_nast_check.
       AND bukrs IN s_bukrs
       AND fkart IN s_fkart
       AND fksto <> abap_true
-      AND sfakn = space.
+      AND sfakn = space
+      AND netwr > 0.
 
   CHECK lt_vbrk IS NOT INITIAL.
 
