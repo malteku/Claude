@@ -148,9 +148,8 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form SELECT_ORDERS
 *&---------------------------------------------------------------------*
-*& Selektiert Auftraege, die auftragsbezogen fakturiert werden koennen.
-*& Alle VBAP-FKREL-Werte ausser leer und 'A' (lieferbezogen) werden
-*& als auftragsbezogen behandelt (B, F, K, L, M, I, etc.).
+*& Selektiert Streckenauftraege (Positionstyp TAS/YKPS), die
+*& auftragsbezogen fakturiert werden koennen.
 *& VBUP-FKSTA: A = Nicht fakturiert, B = Teilweise fakturiert
 *&---------------------------------------------------------------------*
 FORM select_orders.
@@ -170,6 +169,8 @@ FORM select_orders.
       AND header~spart IN s_spart
       AND header~audat IN s_audat
       AND header~kunnr IN s_kunnr
+      AND ( item~pstyv = gc_pstyv_tas
+         OR item~pstyv = gc_pstyv_ykps )
       AND item~fkrel   <> space
       AND item~fkrel   <> gc_fkrel_delivery
       AND ( status~fksta = gc_fksta_open

@@ -22,6 +22,9 @@ CONSTANTS:
   gc_rfbsk_waiting TYPE rfbsk VALUE 'A',   " Nicht uebertragen
   gc_rfbsk_error   TYPE rfbsk VALUE 'B',   " Fehlerhaft
   gc_rfbsk_posted  TYPE rfbsk VALUE 'C',   " Gebucht
+  " Item category VBAP-PSTYV (Streckengeschaeft)
+  gc_pstyv_tas  TYPE pstyv VALUE 'TAS',   " Streckenposition
+  gc_pstyv_ykps TYPE pstyv VALUE 'YKPS',  " Kundenspez. Streckenposition
   " Billing relevance VBAP-FKREL
   gc_fkrel_delivery TYPE fkrel VALUE 'A',  " Lieferbezogene Faktura
   " Message application NAST-KAPPL
