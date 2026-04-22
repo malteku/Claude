@@ -391,7 +391,7 @@ FORM select_nast_check.
                  <fs_nast>  TYPE ty_nast_raw.
 
   " Selektiere alle relevanten Fakturen
-  SELECT vbeln fkdat fkart bukrs kunag netwr waerk
+  SELECT vbeln fkdat fkart bukrs kunag netwr waerk vkgrp
     INTO CORRESPONDING FIELDS OF TABLE lt_vbrk
     FROM vbrk
     WHERE vkorg IN s_vkorg
@@ -912,6 +912,10 @@ FORM set_columns_nast USING io_salv TYPE REF TO cl_salv_table.
       lo_column ?= lo_columns->get_column( 'WAERK' ).
       lo_column->set_short_text( 'Waehr.' ).
 
+      lo_column ?= lo_columns->get_column( 'VKGRP' ).
+      lo_column->set_short_text( 'VkGrp' ).
+      lo_column->set_medium_text( 'Verkäufergruppe' ).
+
       lo_column ?= lo_columns->get_column( 'KSCHL' ).
       lo_column->set_short_text( 'NachArt' ).
       lo_column->set_medium_text( 'Nachrichtenart' ).
@@ -1037,7 +1041,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         CONCATENATE
           'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
           'Auftraggeber' 'Kundenname' 'Nettowert' 'Waehrung'
-          'Nachrichtenart' 'Nachrichtenstatus'
+          'Verkäufergruppe' 'Nachrichtenart' 'Nachrichtenstatus'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
@@ -1046,7 +1050,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           CONCATENATE
             <fs_nst>-vbeln <fs_nst>-fkdat <fs_nst>-fkart <fs_nst>-bukrs
             <fs_nst>-kunag <fs_nst>-name1 lv_netwr <fs_nst>-waerk
-            <fs_nst>-kschl <fs_nst>-vstat_txt
+            <fs_nst>-vkgrp <fs_nst>-kschl <fs_nst>-vstat_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
         ENDLOOP.
