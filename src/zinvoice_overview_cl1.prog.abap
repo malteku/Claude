@@ -490,7 +490,7 @@ FORM select_nast_check.
   " (VBRP -> VBAK via JOIN, um zweistufiges FOR ALL ENTRIES zu vermeiden)
   TYPES: BEGIN OF lty_vkgrp,
            vbeln TYPE vbrp-vbeln,
-           vkgrp TYPE vbak-vkgrp,
+           vkgrp TYPE c LENGTH 3,
          END OF lty_vkgrp.
 
   DATA: lt_vkgrp TYPE SORTED TABLE OF lty_vkgrp
