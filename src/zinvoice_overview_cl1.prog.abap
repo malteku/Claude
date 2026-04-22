@@ -489,7 +489,7 @@ FORM select_nast_check.
   " Verkäufergruppe aus dem zugehoerigen Auftrag ermitteln (VBRP->AUBEL->VBAK)
   TYPES: BEGIN OF lty_aubel,
            vbeln TYPE vbeln,
-           aubel TYPE aubel,
+           aubel TYPE vbeln,
          END OF lty_aubel.
 
   DATA: lt_aubel TYPE STANDARD TABLE OF lty_aubel,
