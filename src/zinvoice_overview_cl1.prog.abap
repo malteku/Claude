@@ -488,8 +488,8 @@ FORM select_nast_check.
 
   " Verkäufergruppe aus dem zugehoerigen Auftrag ermitteln (VBRP->AUBEL->VBAK)
   TYPES: BEGIN OF lty_aubel,
-           vbeln TYPE vbeln,
-           aubel TYPE vbeln,
+           vbeln TYPE vbrp-vbeln,
+           aubel TYPE vbak-vbeln,
          END OF lty_aubel.
 
   DATA: lt_aubel TYPE STANDARD TABLE OF lty_aubel,
@@ -508,7 +508,7 @@ FORM select_nast_check.
 
   " 2. Verkäufergruppe aus dem Auftragskopf lesen
   TYPES: BEGIN OF lty_vkgrp,
-           vbeln TYPE vbeln,
+           vbeln TYPE vbak-vbeln,
            vkgrp TYPE vbak-vkgrp,
          END OF lty_vkgrp.
 
