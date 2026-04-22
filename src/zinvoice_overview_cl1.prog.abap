@@ -391,7 +391,7 @@ FORM select_nast_check.
                  <fs_nast>  TYPE ty_nast_raw.
 
   " Selektiere alle relevanten Fakturen
-  SELECT vbeln fkdat fkart bukrs kunag netwr waerk vkgrp
+  SELECT vbeln fkdat fkart bukrs kunag netwr waerk
     INTO CORRESPONDING FIELDS OF TABLE lt_vbrk
     FROM vbrk
     WHERE vkorg IN s_vkorg
@@ -474,6 +474,33 @@ FORM select_nast_check.
   ENDLOOP.
 
   SORT gt_nast_check BY bukrs vbeln.
+
+  " Verkäufergruppe aus dem zugehoerigen Auftrag ermitteln (VBRP->AUBEL->VBAK)
+  TYPES: BEGIN OF lty_vkgrp,
+           vbeln TYPE vbeln,
+           vkgrp TYPE vkgrp,
+         END OF lty_vkgrp.
+
+  DATA: lt_vkgrp TYPE SORTED TABLE OF lty_vkgrp
+                 WITH UNIQUE KEY vbeln.
+
+  SELECT DISTINCT item~vbeln  order~vkgrp
+    INTO TABLE lt_vkgrp
+    FROM vbrp AS item
+    INNER JOIN vbak AS order ON order~vbeln = item~aubel
+    FOR ALL ENTRIES IN gt_nast_check
+    WHERE item~vbeln = gt_nast_check-vbeln.
+
+  FIELD-SYMBOLS: <fs_nast_vk> TYPE ty_nast_check.
+  DATA: ls_vkgrp TYPE lty_vkgrp.
+
+  LOOP AT gt_nast_check ASSIGNING <fs_nast_vk>.
+    READ TABLE lt_vkgrp INTO ls_vkgrp
+      WITH KEY vbeln = <fs_nast_vk>-vbeln.
+    IF sy-subrc = 0.
+      <fs_nast_vk>-vkgrp = ls_vkgrp-vkgrp.
+    ENDIF.
+  ENDLOOP.
 
 ENDFORM.
 
