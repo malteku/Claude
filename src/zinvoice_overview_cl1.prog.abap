@@ -372,7 +372,16 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM select_nast_check.
 
-  TYPES: BEGIN OF ty_nast_raw,
+  TYPES: BEGIN OF ty_vbrk_sel,
+           vbeln TYPE vbeln,
+           fkdat TYPE fkdat,
+           fkart TYPE fkart,
+           bukrs TYPE bukrs,
+           kunag TYPE kunag,
+           netwr TYPE netwr,
+           waerk TYPE waerk,
+         END OF ty_vbrk_sel,
+         BEGIN OF ty_nast_raw,
            objky TYPE nast-objky,
            kschl TYPE kschl,
            vstat TYPE c LENGTH 1,
@@ -381,13 +390,13 @@ FORM select_nast_check.
            objky TYPE nast-objky,
          END OF ty_objky.
 
-  DATA: lt_vbrk     TYPE STANDARD TABLE OF ty_nast_check,
+  DATA: lt_vbrk     TYPE STANDARD TABLE OF ty_vbrk_sel,
         lt_objkeys  TYPE STANDARD TABLE OF ty_objky,
         lt_nast     TYPE STANDARD TABLE OF ty_nast_raw,
         ls_nast     TYPE ty_nast_raw,
         lv_has_good TYPE abap_bool.
 
-  FIELD-SYMBOLS: <fs_vbrk>  TYPE ty_nast_check,
+  FIELD-SYMBOLS: <fs_vbrk>  TYPE ty_vbrk_sel,
                  <fs_nast>  TYPE ty_nast_raw.
 
   " Selektiere alle relevanten Fakturen
@@ -424,7 +433,11 @@ FORM select_nast_check.
   SORT lt_nast BY objky.
 
   " Fakturen filtern: nur solche ohne Nachricht oder mit Problem
+  DATA: ls_result TYPE ty_nast_check.
+
   LOOP AT lt_vbrk ASSIGNING <fs_vbrk>.
+    CLEAR ls_result.
+    MOVE-CORRESPONDING <fs_vbrk> TO ls_result.
 
     " Pruefe ob NAST-Eintraege fuer diese Faktura existieren
     READ TABLE lt_nast TRANSPORTING NO FIELDS
@@ -432,11 +445,10 @@ FORM select_nast_check.
       BINARY SEARCH.
 
     IF sy-subrc <> 0.
-      " Keine Nachricht vorhanden -> Rot
-      <fs_vbrk>-ampel     = gc_ampel_red.
-      <fs_vbrk>-vstat     = gc_vstat_initial.
-      <fs_vbrk>-vstat_txt = 'Keine Nachricht'.
-      APPEND <fs_vbrk> TO gt_nast_check.
+      ls_result-ampel     = gc_ampel_red.
+      ls_result-vstat     = gc_vstat_initial.
+      ls_result-vstat_txt = 'Keine Nachricht'.
+      APPEND ls_result TO gt_nast_check.
       CONTINUE.
     ENDIF.
 
@@ -454,21 +466,20 @@ FORM select_nast_check.
     ENDLOOP.
 
     IF lv_has_good = abap_false.
-      " Keine erfolgreich verarbeitete Nachricht gefunden
-      <fs_vbrk>-kschl = ls_nast-kschl.
-      <fs_vbrk>-vstat = ls_nast-vstat.
+      ls_result-kschl = ls_nast-kschl.
+      ls_result-vstat = ls_nast-vstat.
       CASE ls_nast-vstat.
         WHEN gc_vstat_initial.
-          <fs_vbrk>-ampel     = gc_ampel_yellow.
-          <fs_vbrk>-vstat_txt = 'Nicht verarbeitet'.
+          ls_result-ampel     = gc_ampel_yellow.
+          ls_result-vstat_txt = 'Nicht verarbeitet'.
         WHEN gc_vstat_error.
-          <fs_vbrk>-ampel     = gc_ampel_red.
-          <fs_vbrk>-vstat_txt = 'Fehlerhaft'.
+          ls_result-ampel     = gc_ampel_red.
+          ls_result-vstat_txt = 'Fehlerhaft'.
         WHEN OTHERS.
-          <fs_vbrk>-ampel     = gc_ampel_yellow.
-          <fs_vbrk>-vstat_txt = 'Unbekannter Status'.
+          ls_result-ampel     = gc_ampel_yellow.
+          ls_result-vstat_txt = 'Unbekannter Status'.
       ENDCASE.
-      APPEND <fs_vbrk> TO gt_nast_check.
+      APPEND ls_result TO gt_nast_check.
     ENDIF.
 
   ENDLOOP.
