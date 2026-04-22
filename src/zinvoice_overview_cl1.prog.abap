@@ -476,27 +476,53 @@ FORM select_nast_check.
   SORT gt_nast_check BY bukrs vbeln.
 
   " Verkäufergruppe aus dem zugehoerigen Auftrag ermitteln (VBRP->AUBEL->VBAK)
+  TYPES: BEGIN OF lty_aubel,
+           vbeln TYPE vbeln,
+           aubel TYPE aubel,
+         END OF lty_aubel.
+
+  DATA: lt_aubel TYPE STANDARD TABLE OF lty_aubel,
+        lt_vbak  TYPE SORTED TABLE OF vbak-vbeln
+                 WITH UNIQUE KEY table_line.
+
+  " 1. Auftragsnummer aus erster Fakturaposition ermitteln
+  SELECT vbeln aubel
+    INTO TABLE lt_aubel
+    FROM vbrp
+    FOR ALL ENTRIES IN gt_nast_check
+    WHERE vbeln = gt_nast_check-vbeln
+      AND posnr = '000001'.
+
+  CHECK lt_aubel IS NOT INITIAL.
+
+  " 2. Verkäufergruppe aus dem Auftragskopf lesen
   TYPES: BEGIN OF lty_vkgrp,
            vbeln TYPE vbeln,
-           vkgrp TYPE vkgrp,
+           vkgrp TYPE vbak-vkgrp,
          END OF lty_vkgrp.
 
   DATA: lt_vkgrp TYPE SORTED TABLE OF lty_vkgrp
                  WITH UNIQUE KEY vbeln.
 
-  SELECT DISTINCT item~vbeln  order~vkgrp
+  SELECT vbeln vkgrp
     INTO TABLE lt_vkgrp
-    FROM vbrp AS item
-    INNER JOIN vbak AS order ON order~vbeln = item~aubel
-    FOR ALL ENTRIES IN gt_nast_check
-    WHERE item~vbeln = gt_nast_check-vbeln.
+    FROM vbak
+    FOR ALL ENTRIES IN lt_aubel
+    WHERE vbeln = lt_aubel-aubel.
 
-  FIELD-SYMBOLS: <fs_nast_vk> TYPE ty_nast_check.
+  CHECK lt_vkgrp IS NOT INITIAL.
+
+  " 3. Zuordnung: Faktura -> Auftrag -> Verkäufergruppe
+  FIELD-SYMBOLS: <fs_nast_vk> TYPE ty_nast_check,
+                 <fs_aubel>   TYPE lty_aubel.
   DATA: ls_vkgrp TYPE lty_vkgrp.
 
   LOOP AT gt_nast_check ASSIGNING <fs_nast_vk>.
-    READ TABLE lt_vkgrp INTO ls_vkgrp
+    READ TABLE lt_aubel ASSIGNING <fs_aubel>
       WITH KEY vbeln = <fs_nast_vk>-vbeln.
+    CHECK sy-subrc = 0.
+    READ TABLE lt_vkgrp INTO ls_vkgrp
+      WITH KEY vbeln = <fs_aubel>-aubel.
     IF sy-subrc = 0.
       <fs_nast_vk>-vkgrp = ls_vkgrp-vkgrp.
     ENDIF.

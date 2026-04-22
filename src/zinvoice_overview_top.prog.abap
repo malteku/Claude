@@ -105,7 +105,7 @@ TYPES:
     name1     TYPE name1_gp,
     netwr     TYPE netwr,
     waerk     TYPE waerk,
-    vkgrp     TYPE vkgrp,
+    vkgrp     TYPE vbak-vkgrp,
     kschl     TYPE kschl,
     vstat     TYPE c LENGTH 1,
     vstat_txt TYPE char30,
