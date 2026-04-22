@@ -501,8 +501,7 @@ FORM select_nast_check.
     FROM vbrp AS item
     INNER JOIN vbak AS header ON header~vbeln = item~aubel
     FOR ALL ENTRIES IN gt_nast_check
-    WHERE item~vbeln = gt_nast_check-vbeln
-      AND item~posnr = '000001'.
+    WHERE item~vbeln = gt_nast_check-vbeln.
 
   CHECK lt_vkgrp IS NOT INITIAL.
 
