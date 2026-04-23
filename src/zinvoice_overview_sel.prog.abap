@@ -13,7 +13,8 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE gv_t_b01.
     s_vtweg FOR gv_vtweg,
     s_spart FOR gv_spart,
     s_bukrs FOR gv_bukrs,
-    s_fkart FOR gv_fkart.
+    s_fkart FOR gv_fkart,
+    s_lfart FOR gv_lfart.
 SELECTION-SCREEN END OF BLOCK b01.
 
 SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE gv_t_b02.
@@ -58,6 +59,7 @@ INITIALIZATION.
   %_s_spart_%_app_%-text = 'Sparte'.
   %_s_bukrs_%_app_%-text = 'Buchungskreis'.
   %_s_fkart_%_app_%-text = 'Fakturaart'.
+  %_s_lfart_%_app_%-text = 'Lieferart'.
   %_s_kunnr_%_app_%-text = 'Kunde'.
   %_s_lfdat_%_app_%-text = 'Lieferdatum'.
   %_s_audat_%_app_%-text = 'Auftragsdatum'.

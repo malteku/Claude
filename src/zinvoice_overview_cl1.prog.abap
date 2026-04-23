@@ -100,10 +100,12 @@ ENDCLASS.
 FORM select_deliveries.
 
   SELECT delivery~vbeln    item~posnr
-         delivery~erdat    delivery~lfdat
-         delivery~wadat_ist delivery~kunnr
+         delivery~lfart    delivery~erdat
+         delivery~lfdat    delivery~wadat_ist
+         delivery~kunnr
          item~matnr        item~arktx
          item~lfimg        item~vrkme
+         item~netwr        item~waerk
          item~vgbel        item~vgpos
          status~fksta
     INTO CORRESPONDING FIELDS OF TABLE gt_delivery
@@ -112,6 +114,7 @@ FORM select_deliveries.
     INNER JOIN vbup AS status ON status~vbeln   = item~vbeln
                               AND status~posnr  = item~posnr
     WHERE delivery~vkorg IN s_vkorg
+      AND delivery~lfart IN s_lfart
       AND delivery~lfdat IN s_lfdat
       AND delivery~kunnr IN s_kunnr
       AND ( status~fksta = gc_fksta_open
@@ -822,9 +825,11 @@ ENDFORM.
 FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
 
   DATA: lo_columns TYPE REF TO cl_salv_columns_table,
-        lo_column  TYPE REF TO cl_salv_column_table.
+        lo_column  TYPE REF TO cl_salv_column_table,
+        lo_aggrs   TYPE REF TO cl_salv_aggregations.
 
   lo_columns = io_salv->get_columns( ).
+  lo_aggrs   = io_salv->get_aggregations( ).
 
   TRY.
       " Traffic light column
@@ -838,6 +843,10 @@ FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
 
       lo_column ?= lo_columns->get_column( 'POSNR' ).
       lo_column->set_short_text( 'Position' ).
+
+      lo_column ?= lo_columns->get_column( 'LFART' ).
+      lo_column->set_short_text( 'LiefArt' ).
+      lo_column->set_medium_text( 'Lieferart' ).
 
       lo_column ?= lo_columns->get_column( 'ERDAT' ).
       lo_column->set_short_text( 'Angelegt' ).
@@ -866,6 +875,12 @@ FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
       lo_column ?= lo_columns->get_column( 'VRKME' ).
       lo_column->set_short_text( 'ME' ).
 
+      lo_column ?= lo_columns->get_column( 'NETWR' ).
+      lo_column->set_short_text( 'Nettowert' ).
+
+      lo_column ?= lo_columns->get_column( 'WAERK' ).
+      lo_column->set_short_text( 'Waehr.' ).
+
       lo_column ?= lo_columns->get_column( 'VGBEL' ).
       lo_column->set_short_text( 'Auftrag' ).
       lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
@@ -887,7 +902,9 @@ FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
       lo_column->set_short_text( 'VkGrp Bez' ).
       lo_column->set_medium_text( 'Verkauefergruppe' ).
 
-    CATCH cx_salv_not_found.                            "#EC NO_HANDLER
+      lo_aggrs->add_aggregation( columnname = 'NETWR' aggregation = if_salv_c_aggregation=>total ).
+
+    CATCH cx_salv_not_found cx_salv_data_error cx_salv_existing. "#EC NO_HANDLER
   ENDTRY.
 
 ENDFORM.
@@ -1150,21 +1167,24 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         APPEND 'Nicht fakturierte Lieferungen' TO ct_csv.
 
         CONCATENATE
-          'Lieferung' 'Position' 'Angelegt am' 'Lieferdatum'
-          'WA-Datum' 'Kunde' 'Kundenname' 'Material'
-          'Bezeichnung' 'Liefermenge' 'ME' 'Auftrag'
-          'Auftr.Pos' 'Fakturastatus'
+          'Lieferung' 'Position' 'Lieferart' 'Angelegt am'
+          'Lieferdatum' 'WA-Datum' 'Kunde' 'Kundenname'
+          'Material' 'Bezeichnung' 'Liefermenge' 'ME'
+          'Nettowert' 'Waehrung' 'Auftrag' 'Auftr.Pos'
+          'Fakturastatus'
           'Verkauefergruppe' 'VkGrp Bezeichnung'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
         LOOP AT gt_delivery ASSIGNING <fs_del>.
           WRITE <fs_del>-lfimg TO lv_lfimg LEFT-JUSTIFIED.
+          WRITE <fs_del>-netwr TO lv_netwr LEFT-JUSTIFIED.
           CONCATENATE
-            <fs_del>-vbeln <fs_del>-posnr <fs_del>-erdat <fs_del>-lfdat
-            <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
-            <fs_del>-arktx lv_lfimg <fs_del>-vrkme <fs_del>-vgbel
-            <fs_del>-vgpos <fs_del>-fksta_txt
+            <fs_del>-vbeln <fs_del>-posnr <fs_del>-lfart <fs_del>-erdat
+            <fs_del>-lfdat <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1
+            <fs_del>-matnr <fs_del>-arktx lv_lfimg <fs_del>-vrkme
+            lv_netwr <fs_del>-waerk <fs_del>-vgbel <fs_del>-vgpos
+            <fs_del>-fksta_txt
             <fs_del>-vkgrp <fs_del>-vkgrp_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
