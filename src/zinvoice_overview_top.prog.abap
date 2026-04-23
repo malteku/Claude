@@ -57,6 +57,8 @@ TYPES:
     vgpos     TYPE vgpos,
     fksta     TYPE fksta,
     fksta_txt TYPE char20,
+    vkgrp     TYPE c LENGTH 3,
+    vkgrp_txt TYPE char40,
   END OF ty_delivery,
 
   BEGIN OF ty_order,
@@ -76,6 +78,8 @@ TYPES:
     fkrel     TYPE fkrel,
     fksta     TYPE fksta,
     fksta_txt TYPE char20,
+    vkgrp     TYPE c LENGTH 3,
+    vkgrp_txt TYPE char40,
   END OF ty_order,
 
   BEGIN OF ty_billing,
@@ -93,6 +97,8 @@ TYPES:
     erdat     TYPE erdat,
     ernam     TYPE ernam,
     bukrs     TYPE bukrs,
+    vkgrp     TYPE c LENGTH 3,
+    vkgrp_txt TYPE char40,
   END OF ty_billing,
 
   BEGIN OF ty_nast_check,
@@ -106,6 +112,7 @@ TYPES:
     netwr     TYPE netwr,
     waerk     TYPE waerk,
     vkgrp     TYPE c LENGTH 3,
+    vkgrp_txt TYPE char40,
     kschl     TYPE kschl,
     vstat     TYPE c LENGTH 1,
     vstat_txt TYPE char30,

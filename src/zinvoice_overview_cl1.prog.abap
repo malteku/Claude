@@ -194,7 +194,7 @@ FORM select_orders.
          header~audat   header~auart   header~kunnr
          item~matnr     item~arktx     item~kwmeng
          item~vrkme     item~netwr     header~waerk
-         item~fkrel     status~fksta
+         header~vkgrp   item~fkrel     status~fksta
     INTO CORRESPONDING FIELDS OF TABLE gt_order
     FROM vbak AS header
     INNER JOIN vbap AS item   ON item~vbeln    = header~vbeln
@@ -486,37 +486,6 @@ FORM select_nast_check.
 
   SORT gt_nast_check BY bukrs vbeln.
 
-  " Verkäufergruppe aus dem zugehoerigen Auftrag ermitteln
-  " (VBRP -> VBAK via JOIN, um zweistufiges FOR ALL ENTRIES zu vermeiden)
-  TYPES: BEGIN OF lty_vkgrp,
-           vbeln TYPE vbrp-vbeln,
-           vkgrp TYPE c LENGTH 3,
-         END OF lty_vkgrp.
-
-  DATA: lt_vkgrp TYPE SORTED TABLE OF lty_vkgrp
-                 WITH NON-UNIQUE KEY vbeln.
-
-  SELECT item~vbeln header~vkgrp
-    INTO CORRESPONDING FIELDS OF TABLE lt_vkgrp
-    FROM vbrp AS item
-    INNER JOIN vbak AS header ON header~vbeln = item~aubel
-    FOR ALL ENTRIES IN gt_nast_check
-    WHERE item~vbeln = gt_nast_check-vbeln.
-
-  CHECK lt_vkgrp IS NOT INITIAL.
-
-  FIELD-SYMBOLS: <fs_nast_vk> TYPE ty_nast_check.
-  DATA: ls_vkgrp TYPE lty_vkgrp.
-
-  LOOP AT gt_nast_check ASSIGNING <fs_nast_vk>.
-    READ TABLE lt_vkgrp INTO ls_vkgrp
-      WITH KEY vbeln = <fs_nast_vk>-vbeln
-      BINARY SEARCH.
-    IF sy-subrc = 0.
-      <fs_nast_vk>-vkgrp = ls_vkgrp-vkgrp.
-    ENDIF.
-  ENDLOOP.
-
 ENDFORM.
 
 
@@ -604,6 +573,155 @@ FORM enrich_customer_names.
     IF sy-subrc = 0.
       <fs_nst>-name1 = ls_kna1-name1.
     ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form ENRICH_VKGRP
+*&---------------------------------------------------------------------*
+*& Ermittelt die Verkäufergruppe (VKGRP) und deren Bezeichnung (TVGRT)
+*& fuer alle Ergebnistabellen.
+*&---------------------------------------------------------------------*
+FORM enrich_vkgrp.
+
+  TYPES: BEGIN OF lty_vkgrp_map,
+           key   TYPE vbeln,
+           vkgrp TYPE c LENGTH 3,
+         END OF lty_vkgrp_map,
+         BEGIN OF lty_vkgrp_txt,
+           vkgrp TYPE c LENGTH 3,
+           bezei TYPE char40,
+         END OF lty_vkgrp_txt,
+         BEGIN OF lty_vbrp_vkgrp,
+           vbeln TYPE vbrp-vbeln,
+           vkgrp TYPE c LENGTH 3,
+         END OF lty_vbrp_vkgrp.
+
+  DATA: lt_vkgrp_map  TYPE SORTED TABLE OF lty_vkgrp_map
+                      WITH NON-UNIQUE KEY key,
+        lt_vkgrp_txt  TYPE SORTED TABLE OF lty_vkgrp_txt
+                      WITH UNIQUE KEY vkgrp,
+        lt_bill_vkgrp TYPE SORTED TABLE OF lty_vbrp_vkgrp
+                      WITH NON-UNIQUE KEY vbeln,
+        lt_vkgrp_all  TYPE STANDARD TABLE OF c LENGTH 3,
+        lt_vgbel      TYPE STANDARD TABLE OF vbeln,
+        lt_bill_keys  TYPE STANDARD TABLE OF vbeln,
+        ls_map        TYPE lty_vkgrp_map,
+        ls_txt        TYPE lty_vkgrp_txt,
+        ls_bv         TYPE lty_vbrp_vkgrp.
+
+  FIELD-SYMBOLS: <fs_del> TYPE ty_delivery,
+                 <fs_ord> TYPE ty_order,
+                 <fs_bil> TYPE ty_billing,
+                 <fs_nst> TYPE ty_nast_check.
+
+  " --- A. VKGRP ermitteln pro Beleg ---
+
+  " Aufträge: VKGRP bereits im SELECT (header~vkgrp) -> nur sammeln
+  LOOP AT gt_order ASSIGNING <fs_ord>.
+    APPEND <fs_ord>-vkgrp TO lt_vkgrp_all.
+  ENDLOOP.
+
+  " Lieferungen: VKGRP aus VBAK via vgbel (Auftragsnummer)
+  IF gt_delivery IS NOT INITIAL.
+    LOOP AT gt_delivery ASSIGNING <fs_del>.
+      IF <fs_del>-vgbel IS NOT INITIAL.
+        APPEND <fs_del>-vgbel TO lt_vgbel.
+      ENDIF.
+    ENDLOOP.
+    SORT lt_vgbel.
+    DELETE ADJACENT DUPLICATES FROM lt_vgbel.
+    IF lt_vgbel IS NOT INITIAL.
+      SELECT vbeln vkgrp
+        INTO TABLE lt_vkgrp_map
+        FROM vbak
+        FOR ALL ENTRIES IN lt_vgbel
+        WHERE vbeln = lt_vgbel-table_line.
+      LOOP AT gt_delivery ASSIGNING <fs_del>.
+        READ TABLE lt_vkgrp_map INTO ls_map
+          WITH KEY key = <fs_del>-vgbel.
+        IF sy-subrc = 0.
+          <fs_del>-vkgrp = ls_map-vkgrp.
+          APPEND ls_map-vkgrp TO lt_vkgrp_all.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ENDIF.
+
+  " Fakturen + NAST: VKGRP aus VBAK via VBRP-AUBEL (JOIN)
+  LOOP AT gt_billing ASSIGNING <fs_bil>.
+    APPEND <fs_bil>-vbeln TO lt_bill_keys.
+  ENDLOOP.
+  LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+    APPEND <fs_nst>-vbeln TO lt_bill_keys.
+  ENDLOOP.
+  SORT lt_bill_keys.
+  DELETE ADJACENT DUPLICATES FROM lt_bill_keys.
+
+  IF lt_bill_keys IS NOT INITIAL.
+    SELECT item~vbeln header~vkgrp
+      INTO CORRESPONDING FIELDS OF TABLE lt_bill_vkgrp
+      FROM vbrp AS item
+      INNER JOIN vbak AS header ON header~vbeln = item~aubel
+      FOR ALL ENTRIES IN lt_bill_keys
+      WHERE item~vbeln = lt_bill_keys-table_line.
+
+    LOOP AT gt_billing ASSIGNING <fs_bil>.
+      READ TABLE lt_bill_vkgrp INTO ls_bv
+        WITH KEY vbeln = <fs_bil>-vbeln.
+      IF sy-subrc = 0.
+        <fs_bil>-vkgrp = ls_bv-vkgrp.
+        APPEND ls_bv-vkgrp TO lt_vkgrp_all.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+      READ TABLE lt_bill_vkgrp INTO ls_bv
+        WITH KEY vbeln = <fs_nst>-vbeln.
+      IF sy-subrc = 0.
+        <fs_nst>-vkgrp = ls_bv-vkgrp.
+        APPEND ls_bv-vkgrp TO lt_vkgrp_all.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  " --- B. VKGRP-Bezeichnung aus TVGRT ---
+  SORT lt_vkgrp_all.
+  DELETE ADJACENT DUPLICATES FROM lt_vkgrp_all.
+  DELETE lt_vkgrp_all WHERE table_line IS INITIAL.
+
+  CHECK lt_vkgrp_all IS NOT INITIAL.
+
+  SELECT vkgrp bezei
+    INTO TABLE lt_vkgrp_txt
+    FROM tvgrt
+    FOR ALL ENTRIES IN lt_vkgrp_all
+    WHERE spras = sy-langu
+      AND vkgrp = lt_vkgrp_all-table_line.
+
+  CHECK lt_vkgrp_txt IS NOT INITIAL.
+
+  " --- C. Text in alle Tabellen eintragen ---
+  LOOP AT gt_delivery ASSIGNING <fs_del>.
+    READ TABLE lt_vkgrp_txt INTO ls_txt WITH KEY vkgrp = <fs_del>-vkgrp.
+    IF sy-subrc = 0. <fs_del>-vkgrp_txt = ls_txt-bezei. ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_order ASSIGNING <fs_ord>.
+    READ TABLE lt_vkgrp_txt INTO ls_txt WITH KEY vkgrp = <fs_ord>-vkgrp.
+    IF sy-subrc = 0. <fs_ord>-vkgrp_txt = ls_txt-bezei. ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_billing ASSIGNING <fs_bil>.
+    READ TABLE lt_vkgrp_txt INTO ls_txt WITH KEY vkgrp = <fs_bil>-vkgrp.
+    IF sy-subrc = 0. <fs_bil>-vkgrp_txt = ls_txt-bezei. ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_nast_check ASSIGNING <fs_nst>.
+    READ TABLE lt_vkgrp_txt INTO ls_txt WITH KEY vkgrp = <fs_nst>-vkgrp.
+    IF sy-subrc = 0. <fs_nst>-vkgrp_txt = ls_txt-bezei. ENDIF.
   ENDLOOP.
 
 ENDFORM.
@@ -760,6 +878,13 @@ FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
       lo_column->set_short_text( 'FaktStat' ).
       lo_column->set_medium_text( 'Fakturastatus' ).
 
+      lo_column ?= lo_columns->get_column( 'VKGRP' ).
+      lo_column->set_short_text( 'VkGrp' ).
+
+      lo_column ?= lo_columns->get_column( 'VKGRP_TXT' ).
+      lo_column->set_short_text( 'VkGrp Bez' ).
+      lo_column->set_medium_text( 'Verkauefergruppe' ).
+
     CATCH cx_salv_not_found.                            "#EC NO_HANDLER
   ENDTRY.
 
@@ -832,6 +957,13 @@ FORM set_columns_order USING io_salv TYPE REF TO cl_salv_table.
       lo_column->set_short_text( 'FaktStat' ).
       lo_column->set_medium_text( 'Fakturastatus' ).
 
+      lo_column ?= lo_columns->get_column( 'VKGRP' ).
+      lo_column->set_short_text( 'VkGrp' ).
+
+      lo_column ?= lo_columns->get_column( 'VKGRP_TXT' ).
+      lo_column->set_short_text( 'VkGrp Bez' ).
+      lo_column->set_medium_text( 'Verkauefergruppe' ).
+
       lo_aggrs->add_aggregation( columnname = 'KWMENG' aggregation = if_salv_c_aggregation=>total ).
       lo_aggrs->add_aggregation( columnname = 'NETWR'  aggregation = if_salv_c_aggregation=>total ).
 
@@ -901,6 +1033,13 @@ FORM set_columns_billing USING io_salv TYPE REF TO cl_salv_table.
       lo_column ?= lo_columns->get_column( 'ERNAM' ).
       lo_column->set_short_text( 'Ersteller' ).
 
+      lo_column ?= lo_columns->get_column( 'VKGRP' ).
+      lo_column->set_short_text( 'VkGrp' ).
+
+      lo_column ?= lo_columns->get_column( 'VKGRP_TXT' ).
+      lo_column->set_short_text( 'VkGrp Bez' ).
+      lo_column->set_medium_text( 'Verkauefergruppe' ).
+
       lo_aggrs->add_aggregation( columnname = 'NETWR' aggregation = if_salv_c_aggregation=>total ).
       lo_aggrs->add_aggregation( columnname = 'MWSBK' aggregation = if_salv_c_aggregation=>total ).
 
@@ -956,7 +1095,10 @@ FORM set_columns_nast USING io_salv TYPE REF TO cl_salv_table.
 
       lo_column ?= lo_columns->get_column( 'VKGRP' ).
       lo_column->set_short_text( 'VkGrp' ).
-      lo_column->set_medium_text( 'Verkäufergruppe' ).
+
+      lo_column ?= lo_columns->get_column( 'VKGRP_TXT' ).
+      lo_column->set_short_text( 'VkGrp Bez' ).
+      lo_column->set_medium_text( 'Verkauefergruppe' ).
 
       lo_column ?= lo_columns->get_column( 'KSCHL' ).
       lo_column->set_short_text( 'NachArt' ).
@@ -1010,6 +1152,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           'WA-Datum' 'Kunde' 'Kundenname' 'Material'
           'Bezeichnung' 'Liefermenge' 'ME' 'Auftrag'
           'Auftr.Pos' 'Fakturastatus'
+          'Verkauefergruppe' 'VkGrp Bezeichnung'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
@@ -1020,6 +1163,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
             <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1 <fs_del>-matnr
             <fs_del>-arktx lv_lfimg <fs_del>-vrkme <fs_del>-vgbel
             <fs_del>-vgpos <fs_del>-fksta_txt
+            <fs_del>-vkgrp <fs_del>-vkgrp_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
         ENDLOOP.
@@ -1034,7 +1178,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           'Auftrag' 'Position' 'Auftragsdatum' 'Auftragsart'
           'Kunde' 'Kundenname' 'Material' 'Bezeichnung'
           'Auftragsmenge' 'ME' 'Nettowert' 'Waehrung'
-          'Fakturastatus'
+          'Fakturastatus' 'Verkauefergruppe' 'VkGrp Bezeichnung'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
@@ -1046,6 +1190,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
             <fs_ord>-kunnr <fs_ord>-name1 <fs_ord>-matnr <fs_ord>-arktx
             lv_kwmng <fs_ord>-vrkme lv_netwr <fs_ord>-waerk
             <fs_ord>-fksta_txt
+            <fs_ord>-vkgrp <fs_ord>-vkgrp_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
         ENDLOOP.
@@ -1060,6 +1205,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
           'Auftraggeber' 'Kundenname' 'Nettowert' 'Steuerbetrag'
           'Waehrung' 'Buchungsstatus' 'Angelegt am' 'Angelegt von'
+          'Verkauefergruppe' 'VkGrp Bezeichnung'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
@@ -1070,6 +1216,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
             <fs_bil>-vbeln <fs_bil>-fkdat <fs_bil>-fkart <fs_bil>-bukrs
             <fs_bil>-kunag <fs_bil>-name1 lv_netwr lv_mwsbk
             <fs_bil>-waerk <fs_bil>-rfbsk_txt <fs_bil>-erdat <fs_bil>-ernam
+            <fs_bil>-vkgrp <fs_bil>-vkgrp_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
         ENDLOOP.
@@ -1083,7 +1230,8 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         CONCATENATE
           'Faktura' 'Fakturadatum' 'Fakturaart' 'Buchungskreis'
           'Auftraggeber' 'Kundenname' 'Nettowert' 'Waehrung'
-          'Verkäufergruppe' 'Nachrichtenart' 'Nachrichtenstatus'
+          'Verkauefergruppe' 'VkGrp Bezeichnung'
+          'Nachrichtenart' 'Nachrichtenstatus'
           INTO lv_line SEPARATED BY gc_csv_sep.
         APPEND lv_line TO ct_csv.
 
@@ -1092,7 +1240,8 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           CONCATENATE
             <fs_nst>-vbeln <fs_nst>-fkdat <fs_nst>-fkart <fs_nst>-bukrs
             <fs_nst>-kunag <fs_nst>-name1 lv_netwr <fs_nst>-waerk
-            <fs_nst>-vkgrp <fs_nst>-kschl <fs_nst>-vstat_txt
+            <fs_nst>-vkgrp <fs_nst>-vkgrp_txt
+            <fs_nst>-kschl <fs_nst>-vstat_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
           APPEND lv_line TO ct_csv.
         ENDLOOP.

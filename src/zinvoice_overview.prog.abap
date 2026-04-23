@@ -41,6 +41,7 @@ START-OF-SELECTION.
 
   " Enrich all tables with customer names in one pass
   PERFORM enrich_customer_names.
+  PERFORM enrich_vkgrp.
 
 *----------------------------------------------------------------------*
 * END-OF-SELECTION
