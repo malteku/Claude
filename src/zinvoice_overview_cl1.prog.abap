@@ -586,17 +586,19 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM enrich_vkgrp.
 
+  TYPES: lty_vkgrp_key TYPE c LENGTH 3.
+
   TYPES: BEGIN OF lty_vkgrp_map,
            key   TYPE vbeln,
-           vkgrp TYPE c LENGTH 3,
+           vkgrp TYPE lty_vkgrp_key,
          END OF lty_vkgrp_map,
          BEGIN OF lty_vkgrp_txt,
-           vkgrp TYPE c LENGTH 3,
+           vkgrp TYPE lty_vkgrp_key,
            bezei TYPE char40,
          END OF lty_vkgrp_txt,
          BEGIN OF lty_vbrp_vkgrp,
            vbeln TYPE vbrp-vbeln,
-           vkgrp TYPE c LENGTH 3,
+           vkgrp TYPE lty_vkgrp_key,
          END OF lty_vbrp_vkgrp.
 
   DATA: lt_vkgrp_map  TYPE SORTED TABLE OF lty_vkgrp_map
@@ -605,7 +607,7 @@ FORM enrich_vkgrp.
                       WITH UNIQUE KEY vkgrp,
         lt_bill_vkgrp TYPE SORTED TABLE OF lty_vbrp_vkgrp
                       WITH NON-UNIQUE KEY vbeln,
-        lt_vkgrp_all  TYPE STANDARD TABLE OF c LENGTH 3,
+        lt_vkgrp_all  TYPE STANDARD TABLE OF lty_vkgrp_key,
         lt_vgbel      TYPE STANDARD TABLE OF vbeln,
         lt_bill_keys  TYPE STANDARD TABLE OF vbeln,
         ls_map        TYPE lty_vkgrp_map,
