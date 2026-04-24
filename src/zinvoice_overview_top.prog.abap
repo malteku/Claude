@@ -55,7 +55,6 @@ TYPES:
     lfimg     TYPE lfimg,
     vrkme     TYPE vrkme,
     netwr     TYPE netwr,
-    waerk     TYPE waerk,
     vgbel     TYPE vgbel,
     vgpos     TYPE vgpos,
     fksta     TYPE fksta,

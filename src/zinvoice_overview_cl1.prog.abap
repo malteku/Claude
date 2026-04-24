@@ -105,7 +105,7 @@ FORM select_deliveries.
          delivery~kunnr
          item~matnr        item~arktx
          item~lfimg        item~vrkme
-         item~netwr        item~waerk
+         item~netwr
          item~vgbel        item~vgpos
          status~fksta
     INTO CORRESPONDING FIELDS OF TABLE gt_delivery
@@ -878,9 +878,6 @@ FORM set_columns_delivery USING io_salv TYPE REF TO cl_salv_table.
       lo_column ?= lo_columns->get_column( 'NETWR' ).
       lo_column->set_short_text( 'Nettowert' ).
 
-      lo_column ?= lo_columns->get_column( 'WAERK' ).
-      lo_column->set_short_text( 'Waehr.' ).
-
       lo_column ?= lo_columns->get_column( 'VGBEL' ).
       lo_column->set_short_text( 'Auftrag' ).
       lo_column->set_cell_type( if_salv_c_cell_type=>hotspot ).
@@ -1170,7 +1167,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
           'Lieferung' 'Position' 'Lieferart' 'Angelegt am'
           'Lieferdatum' 'WA-Datum' 'Kunde' 'Kundenname'
           'Material' 'Bezeichnung' 'Liefermenge' 'ME'
-          'Nettowert' 'Waehrung' 'Auftrag' 'Auftr.Pos'
+          'Nettowert' 'Auftrag' 'Auftr.Pos'
           'Fakturastatus'
           'Verkauefergruppe' 'VkGrp Bezeichnung'
           INTO lv_line SEPARATED BY gc_csv_sep.
@@ -1183,7 +1180,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
             <fs_del>-vbeln <fs_del>-posnr <fs_del>-lfart <fs_del>-erdat
             <fs_del>-lfdat <fs_del>-wadat_ist <fs_del>-kunnr <fs_del>-name1
             <fs_del>-matnr <fs_del>-arktx lv_lfimg <fs_del>-vrkme
-            lv_netwr <fs_del>-waerk <fs_del>-vgbel <fs_del>-vgpos
+            lv_netwr <fs_del>-vgbel <fs_del>-vgpos
             <fs_del>-fksta_txt
             <fs_del>-vkgrp <fs_del>-vkgrp_txt
             INTO lv_line SEPARATED BY gc_csv_sep.
