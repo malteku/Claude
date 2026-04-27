@@ -16,7 +16,7 @@ CLASS lcl_alv_handler DEFINITION.
       constructor
         IMPORTING iv_mode TYPE c,
       on_link_click
-        FOR EVENT link_click OF cl_salv_events_table
+                  FOR EVENT link_click OF cl_salv_events_table
         IMPORTING row column.
 
   PRIVATE SECTION.
@@ -105,14 +105,16 @@ FORM select_deliveries.
          delivery~kunnr
          item~matnr        item~arktx
          item~lfimg        item~vrkme
-         item~netwr
          item~vgbel        item~vgpos
          status~fksta
+         pos_item~netpr
     INTO CORRESPONDING FIELDS OF TABLE gt_delivery
     FROM likp AS delivery
-    INNER JOIN lips AS item   ON item~vbeln    = delivery~vbeln
-    INNER JOIN vbup AS status ON status~vbeln   = item~vbeln
-                              AND status~posnr  = item~posnr
+    INNER JOIN lips AS item      ON item~vbeln     = delivery~vbeln
+    INNER JOIN vbup AS status    ON status~vbeln   = item~vbeln
+                                AND status~posnr   = item~posnr
+    INNER JOIN vbap AS pos_item  ON pos_item~vbeln = item~vgbel
+                                AND pos_item~posnr = item~vgpos
     WHERE delivery~vkorg IN s_vkorg
       AND delivery~lfart IN s_lfart
       AND delivery~lfdat IN s_lfdat
@@ -127,6 +129,7 @@ FORM select_deliveries.
   FIELD-SYMBOLS: <fs_del> TYPE ty_delivery.
 
   LOOP AT gt_delivery ASSIGNING <fs_del>.
+    <fs_del>-netwr = <fs_del>-lfimg * <fs_del>-netpr.
     CASE <fs_del>-fksta.
       WHEN gc_fksta_open.
         <fs_del>-fksta_txt = 'Nicht fakturiert'.
@@ -182,12 +185,12 @@ FORM select_orders.
            posnr TYPE posnr,
          END OF lty_order_key.
 
-  DATA: lt_pr_links  TYPE STANDARD TABLE OF lty_pr_link,
-        lt_po_items  TYPE STANDARD TABLE OF lty_po_item,
-        lt_gr_exists TYPE STANDARD TABLE OF lty_gr_key,
+  DATA: lt_pr_links         TYPE STANDARD TABLE OF lty_pr_link,
+        lt_po_items         TYPE STANDARD TABLE OF lty_po_item,
+        lt_gr_exists        TYPE STANDARD TABLE OF lty_gr_key,
         lt_delivered_orders TYPE HASHED TABLE OF lty_order_key
                             WITH UNIQUE KEY vbeln posnr,
-        ls_key TYPE lty_order_key.
+        ls_key              TYPE lty_order_key.
 
   FIELD-SYMBOLS: <fs_ord> TYPE ty_order,
                  <fs_po>  TYPE lty_po_item,
@@ -212,8 +215,8 @@ FORM select_orders.
          OR item~pstyv = gc_pstyv_ykps )
       AND item~fkrel   <> space
       AND item~fkrel   <> gc_fkrel_delivery
-      AND ( status~fksta = gc_fksta_open
-         OR status~fksta = gc_fksta_partial )
+      AND ( status~fksaa = gc_fksta_open
+         OR status~fksaa = gc_fksta_partial )
       AND item~abgru = space.
 
   CHECK gt_order IS NOT INITIAL.
@@ -399,8 +402,8 @@ FORM select_nast_check.
         ls_nast     TYPE ty_nast_raw,
         lv_has_good TYPE abap_bool.
 
-  FIELD-SYMBOLS: <fs_vbrk>  TYPE ty_vbrk_sel,
-                 <fs_nast>  TYPE ty_nast_raw.
+  FIELD-SYMBOLS: <fs_vbrk> TYPE ty_vbrk_sel,
+                 <fs_nast> TYPE ty_nast_raw.
 
   " Selektiere alle relevanten Fakturen
   SELECT vbeln fkdat fkart bukrs kunag netwr waerk
@@ -803,7 +806,8 @@ FORM display_results.
 
   " Register event handler for hotspot navigation
   CREATE OBJECT lo_handler
-    EXPORTING iv_mode = lv_mode.
+    EXPORTING
+      iv_mode = lv_mode.
 
   lo_events = lo_salv->get_event( ).
   SET HANDLER lo_handler->on_link_click FOR lo_events.
@@ -1158,7 +1162,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
 
   CASE abap_true.
 
-    "--- Nicht fakturierte Lieferungen ---
+      "--- Nicht fakturierte Lieferungen ---
     WHEN p_deliv.
       IF gt_delivery IS NOT INITIAL.
         APPEND 'Nicht fakturierte Lieferungen' TO ct_csv.
@@ -1188,7 +1192,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         ENDLOOP.
       ENDIF.
 
-    "--- Auftragsbezogen fakturierbare Auftraege ---
+      "--- Auftragsbezogen fakturierbare Auftraege ---
     WHEN p_order.
       IF gt_order IS NOT INITIAL.
         APPEND 'Auftragsbezogen fakturierbare Auftraege' TO ct_csv.
@@ -1215,7 +1219,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         ENDLOOP.
       ENDIF.
 
-    "--- Fakturen nicht in Buchhaltung ---
+      "--- Fakturen nicht in Buchhaltung ---
     WHEN p_billi.
       IF gt_billing IS NOT INITIAL.
         APPEND 'Fakturen - nicht in Buchhaltung gebucht' TO ct_csv.
@@ -1241,7 +1245,7 @@ FORM build_csv_content CHANGING ct_csv TYPE string_table.
         ENDLOOP.
       ENDIF.
 
-    "--- Rechnungen ohne / mit fehlerhafter Nachricht ---
+      "--- Rechnungen ohne / mit fehlerhafter Nachricht ---
     WHEN p_nast.
       IF gt_nast_check IS NOT INITIAL.
         APPEND 'Rechnungen ohne / mit fehlerhafter Nachricht' TO ct_csv.
