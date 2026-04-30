@@ -119,9 +119,10 @@ FORM select_deliveries.
       AND delivery~lfart IN s_lfart
       AND delivery~lfdat IN s_lfdat
       AND delivery~kunnr IN s_kunnr
+      And delivery~wadat_ist > 0
       AND ( status~fksta = gc_fksta_open
          OR status~fksta = gc_fksta_partial )
-      AND item~lfimg > 0.
+      AND item~lfimg > 0..
 
   CHECK gt_delivery IS NOT INITIAL.
 
