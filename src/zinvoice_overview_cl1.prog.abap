@@ -1358,7 +1358,9 @@ FORM send_results_by_email.
         lv_att_size TYPE so_obj_len,
         lv_sent     TYPE os_boolean,
         lv_count    TYPE i,
-        lv_text     TYPE char50.
+        lv_text     TYPE char50,
+        lv_option   TYPE char50,
+        lv_vkorg    TYPE char30.
 
   DATA: lv_bom TYPE x LENGTH 3 VALUE 'EFBBBF'.
 
@@ -1385,33 +1387,34 @@ FORM send_results_by_email.
       " Sendauftrag erzeugen
       lo_send_request = cl_bcs=>create_persistent( ).
 
+      " Optionstext und Anzahl ermitteln
+      CASE abap_true.
+        WHEN p_deliv.
+          lv_option = 'Nicht fakturierte Lieferungen'.
+          DESCRIBE TABLE gt_delivery LINES lv_count.
+        WHEN p_order.
+          lv_option = 'Auftragsbez. fakturierbar'.
+          DESCRIBE TABLE gt_order LINES lv_count.
+        WHEN p_billi.
+          lv_option = 'Offene Fakturen (FI)'.
+          DESCRIBE TABLE gt_billing LINES lv_count.
+        WHEN p_nast.
+          lv_option = 'Rechnungen ohne Nachricht'.
+          DESCRIBE TABLE gt_nast_check LINES lv_count.
+      ENDCASE.
+
+      " Verkaufsorg. fuer Betreff ermitteln
+      READ TABLE s_vkorg INDEX 1.
+      lv_vkorg = s_vkorg-low.
+
       " E-Mail-Body aufbauen
       ls_body-line = 'Faktura-Uebersichtsreport'.
       APPEND ls_body TO lt_body.
       CLEAR ls_body.
       APPEND ls_body TO lt_body.
 
-      DESCRIBE TABLE gt_delivery LINES lv_count.
       WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-      CONCATENATE 'Nicht fakturierte Lieferungen:' lv_text
-        INTO ls_body-line SEPARATED BY space.
-      APPEND ls_body TO lt_body.
-
-      DESCRIBE TABLE gt_order LINES lv_count.
-      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-      CONCATENATE 'Auftragsbez. fakturierbar:' lv_text
-        INTO ls_body-line SEPARATED BY space.
-      APPEND ls_body TO lt_body.
-
-      DESCRIBE TABLE gt_billing LINES lv_count.
-      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-      CONCATENATE 'Offene Fakturen (FI):' lv_text
-        INTO ls_body-line SEPARATED BY space.
-      APPEND ls_body TO lt_body.
-
-      DESCRIBE TABLE gt_nast_check LINES lv_count.
-      WRITE lv_count TO lv_text LEFT-JUSTIFIED.
-      CONCATENATE 'Rechnungen ohne Nachricht:' lv_text
+      CONCATENATE lv_option ':' lv_text
         INTO ls_body-line SEPARATED BY space.
       APPEND ls_body TO lt_body.
 
@@ -1421,7 +1424,8 @@ FORM send_results_by_email.
       APPEND ls_body TO lt_body.
 
       " Dokument erzeugen
-      lv_subject = 'Faktura-Uebersichtsreport'.
+      CONCATENATE lv_option '-' 'VkOrg' lv_vkorg
+        INTO lv_subject SEPARATED BY space.
       lo_document = cl_document_bcs=>create_document(
         i_type    = 'RAW'
         i_text    = lt_body
